@@ -1,5 +1,6 @@
 #ifndef XX_HPP
 #define XX_HPP
+#include <iostream>
 #include <cstdint>
 #include <mutex>
 #include <memory>
@@ -34,9 +35,11 @@ public:
     {
     public:
         AutoLock(std::mutex& mutex, std::string& bufWait, std::string bufWork, std::size_t& posWork) :
-            m_mutex(mutex), m_lg(m_mutex), m_bufWait(bufWait), m_bufWork(bufWait), m_posWork(posWork) {}
+            m_mutex(mutex), m_lg(m_mutex), m_bufWait(bufWait), m_bufWork(bufWork), m_posWork(posWork){/*std::cout << "ctor" << std::endl;*/}
         AutoLock(const AutoLock& _o) :m_mutex(_o.m_mutex), m_lg(m_mutex),
-            m_bufWait(_o.m_bufWait), m_bufWork(_o.m_bufWork), m_posWork(_o.m_posWork) {}
+            m_bufWait(_o.m_bufWait), m_bufWork(_o.m_bufWork), m_posWork(_o.m_posWork){/*std::cout << "ctor_2" << std::endl;*/}
+        ~AutoLock() {/* std::cout << "dtor" << std::endl; */}
+        operator bool()const { return true; }
     public:
         std::mutex& m_mutex;
         std::string& m_bufWait;
