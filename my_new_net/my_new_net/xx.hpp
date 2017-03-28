@@ -8,11 +8,11 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/bind.hpp>
 using StdStringPtr = std::shared_ptr<std::string>;
-class SendBuffer
+class SendBuffer_Old
 {
 public:
-	SendBuffer();
-	~SendBuffer();
+	SendBuffer_Old();
+	~SendBuffer_Old();
 public:
 	void Reset();
 	void FeedData(const char* data, uint32_t len);
@@ -63,11 +63,11 @@ private:
 /************************************************************************/
 /*                                                                      */
 /************************************************************************/
-class RecvBuffer
+class RecvBuffer_Old
 {
 public:
-	RecvBuffer();
-	~RecvBuffer();
+	RecvBuffer_Old();
+	~RecvBuffer_Old();
 public:
 	void Reset();
 	int AvaliableSpace(char*& dataHead, uint32_t&dataSize);
@@ -89,61 +89,51 @@ private:
 using BoSocketPtr = std::unique_ptr<boost::asio::ip::tcp::socket>;
 class TcpSocket
 {
+private:
+    class SendBuffer
+    {
+    public:
+        SendBuffer() :m_capacity(1024 * 512) { reset(); }
+    public:
+        void reset();
+    public:
+        const std::size_t m_capacity;
+        std::mutex m_mutex;
+        std::string m_bufWait;
+        std::string m_bufWork;
+        std::size_t m_posWork;//当前的位置,再往前的数据都是被使用过的了,都是过时的数据了
+        bool m_isSending;
+    };
+    class RecvBuffer
+    {
+    public://没有锁.
+        RecvBuffer() :m_capacity(1024 * 512), m_sortSize(1024 * 4), m_isRecving(false) { reset(); }
+    public:
+        void reset();
+    public:
+        const std::size_t m_capacity;
+        const std::size_t m_sortSize;//(右边的)剩余空间<=m_sortSize时,进行内存整理
+        std::mutex m_mutex;
+        std::string m_buf;
+        std::size_t m_posBeg;
+        std::size_t m_posEnd;
+        bool m_isRecving;
+    };
 public:
-	TcpSocket(boost::asio::io_service& io) :m_strand(io) { m_socket = BoSocketPtr(new boost::asio::ip::tcp::socket(io)); }
-	TcpSocket(BoSocketPtr& sock) :m_strand(sock->get_io_service()) { m_socket = std::move(sock); }
+    TcpSocket(boost::asio::io_service& io);
+    TcpSocket(BoSocketPtr& sock);
 public:
-	bool isOpen()const { return m_socket->is_open(); }
-	void close() { m_socket->close(); }
-	void connect(const std::string& ip, std::uint16_t port)
-	{
-		boost::system::error_code ec;
-		boost::asio::ip::address addr = boost::asio::ip::address::from_string(ip, ec);
-		boost::asio::ip::tcp::endpoint ep(addr, port);
-		m_socket->connect(ep, ec);
-	}
+    bool isOpen()const;
+    void close();
+    void connect(const std::string& ip, std::uint16_t port);
 	void localPoint() { m_socket->local_endpoint(); }
 	void remotePoint() { m_socket->remote_endpoint(); }
-    void send(const char* p, std::uint32_t len)
-    {
-        if (p&&len)
-            m_bufSend.FeedData(p, len);
-        if (!m_isSending.load())
-            sendLoop(0);
-    }
-	void sendLoop(std::uint32_t lastSendLength)
-	{
-        const char* pData;
-        std::uint32_t dataLen;
-        m_bufSend.TakeData(pData, dataLen, lastSendLength);
-        if (!dataLen)
-        {
-            if (m_isSending.load())
-            {
-                m_isSending = false;
-                send(nullptr, 0);
-            }
-            else
-            {
-                return;
-            }
-        }
-		//m_socket->send(boost::asio::buffer(pData, dataLen));
-		//基于什么思考,要使用m_strand.wrap包装一下handler呢?
-		m_socket->async_send(boost::asio::buffer(pData, dataLen), m_strand.wrap(/*用std::bind会出错*/boost::bind(&TcpSocket::sendLoopHandler, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred)));
-	}
-    void sendLoopHandler(const boost::system::error_code& ec, std::size_t bytes_transferred)
-    {
-        sendLoop(bytes_transferred);
-    }
-	void recv()
-	{
-		char* dataHead;
-		std::uint32_t dataSize;
-		int rv = m_bufRecv.AvaliableSpace(dataHead, dataSize);
-		std::size_t recvSize = m_socket->receive(boost::asio::buffer(dataHead,dataSize));
-		m_bufRecv.FeedSize(recvSize);
-	}
+    void send(const char* p, std::uint32_t len);
+    void sendLoop(std::size_t lastSendLength);
+    void sendLoopHandler(const boost::system::error_code& ec, std::size_t bytes_transferred);
+    void startRecvAsync();
+    void recvAsync();
+    void recvHandler(const boost::system::error_code& error, std::size_t bytes_transferred);
 	void onRtnStream(){}
 	void onRtnMessage(){}
 	void onError(){}
