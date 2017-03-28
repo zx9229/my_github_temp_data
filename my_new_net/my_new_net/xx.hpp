@@ -1,3 +1,5 @@
+#ifndef XX_HPP
+#define XX_HPP
 #include <cstdint>
 #include <mutex>
 #include <memory>
@@ -25,6 +27,39 @@ private:
 /************************************************************************/
 /*                                                                      */
 /************************************************************************/
+class SendBufferEx
+{
+public:
+    class AutoLock
+    {
+    public:
+        AutoLock(std::mutex& mutex, std::string& bufWait, std::string bufWork, std::size_t& posWork) :
+            m_mutex(mutex), m_lg(m_mutex), m_bufWait(bufWait), m_bufWork(bufWait), m_posWork(posWork) {}
+        AutoLock(const AutoLock& _o) :m_mutex(_o.m_mutex), m_lg(m_mutex),
+            m_bufWait(_o.m_bufWait), m_bufWork(_o.m_bufWork), m_posWork(_o.m_posWork) {}
+    public:
+        std::mutex& m_mutex;
+        std::string& m_bufWait;
+        std::string& m_bufWork;
+        std::size_t& m_posWork;
+    private:
+        std::lock_guard<std::mutex> m_lg;
+    };
+public:
+    SendBufferEx();
+    ~SendBufferEx();
+    void reset();
+    AutoLock lock();
+private:
+    const std::size_t m_capacity;
+    std::mutex m_mutex;
+    std::string m_bufWait;
+    std::string m_bufWork;
+    std::size_t m_posWork;//当前的位置,再往前的数据都是被使用过的了,都是过时的数据了
+};
+/************************************************************************/
+/*                                                                      */
+/************************************************************************/
 class RecvBuffer
 {
 public:
@@ -37,7 +72,7 @@ public:
 	StdStringPtr NextMessage();
 private:
 	static bool CrOrLf(char c);
-	static StdStringPtr ParseMessage(const char* buff, uint32_t& posBeg, uint32_t posEnd);
+	static StdStringPtr ParseMessage(const char* buff, std::size_t& posBeg, uint32_t posEnd);
 private:
 	const std::size_t m_capacity;
 	const std::size_t m_sortSize;//(右边的)剩余空间<=m_sortSize时,进行内存整理
@@ -117,3 +152,5 @@ private:
 	bool m_isRecving;
 	std::atomic_bool m_isSending;
 };
+#include "xx_impl.hpp"
+#endif//XX_HPP

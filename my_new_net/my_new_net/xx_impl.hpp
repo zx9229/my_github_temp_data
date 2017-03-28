@@ -26,7 +26,6 @@ void SendBuffer::FeedData(const char* data, uint32_t len)
 {
 	std::lock_guard<std::mutex> lg(m_mutex);
 	m_bufWait.append(data, len);
-    return m_bufWait.size() + m_bufWork.size() - m_posWork;
 }
 
 
@@ -64,6 +63,28 @@ void SendBuffer::TakeData(const char*&data, uint32_t& len, int confirmLength = -
     }
 }
 #endif//SendBuffer
+/************************************************************************/
+/*                                                                      */
+/************************************************************************/
+#if 1 //SendBufferEx
+SendBufferEx::SendBufferEx():m_capacity(1024 * 64){}
+SendBufferEx::~SendBufferEx(){}
+void SendBufferEx::reset()
+{
+    std::lock_guard<std::mutex> lg(m_mutex);
+    m_bufWait.clear();
+    m_bufWork.clear();
+    m_posWork = 0;
+    if (m_bufWait.capacity() < m_capacity)
+        m_bufWait.reserve(m_capacity);
+    if (m_bufWork.capacity() < m_capacity)
+        m_bufWork.reserve(m_capacity);
+}
+SendBufferEx::AutoLock SendBufferEx::lock()
+{
+    return SendBufferEx::AutoLock(m_mutex, m_bufWait, m_bufWork, m_posWork);
+}
+#endif//SendBufferEx
 /************************************************************************/
 /*                                                                      */
 /************************************************************************/
@@ -137,7 +158,7 @@ bool RecvBuffer::CrOrLf(char c)
 
 //解析原则:当看到\r或\n时,忽略掉前面的\r和\n,最前面需要是END字符串,END前面的就是json字符串,
 //然后偏移到第一个"既不是\r也不是\n"的地方,作为下一个json字符串的起点,
-StdStringPtr RecvBuffer::ParseMessage(const char* buff, uint32_t& posBeg, uint32_t posEnd)
+StdStringPtr RecvBuffer::ParseMessage(const char* buff, std::size_t& posBeg, uint32_t posEnd)
 {
 	StdStringPtr msg = nullptr;
 	int32_t msgBeg = -1, msgEnd = -1;//<0,表示未初始化

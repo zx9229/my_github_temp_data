@@ -1,0 +1,7 @@
+.vscode
+.vs
+Debug
+Release
+*VC.opendb
+*VC.db
+*.suo
