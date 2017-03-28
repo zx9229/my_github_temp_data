@@ -43,12 +43,12 @@ void TcpSocket::RecvBuffer::reset()
 }
 #endif//TcpSocket::RecvBuffer
 
-TcpSocket::TcpSocket(boost::asio::io_service& io) : m_strand(io), m_timer(io)
+TcpSocket::TcpSocket(boost::asio::io_service& io) : m_strand(io), m_timer(io), m_working(false)
 {
 	m_socket = BoostSocketPtr(new boost::asio::ip::tcp::socket(io));
 }
 
-TcpSocket::TcpSocket(BoostSocketPtr& sock) : m_strand(sock->get_io_service()), m_timer(sock->get_io_service())
+TcpSocket::TcpSocket(BoostSocketPtr& sock) : m_strand(sock->get_io_service()), m_timer(sock->get_io_service()), m_working(false)
 {
 	m_socket = std::move(sock);
 }
@@ -79,10 +79,18 @@ boost::asio::ip::tcp::endpoint TcpSocket::remotePoint()
 int TcpSocket::connect(const std::string& ip, std::uint16_t port)
 {
 	int errId = 0;
+	if (m_working.load() == true || m_working.exchange(true) == true)
+	{
+		errId = m_errId.getNextId(-1);
+		std::string msg = "The socket is already working.";
+		m_strand.post(boost::bind(&TcpSocket::onError, this, errId, msg));
+		return errId;
+	}
 	boost::system::error_code ec;
 	boost::asio::ip::address addr = boost::asio::ip::address::from_string(ip, ec);
 	if (ec)
 	{
+		m_working.exchange(false);
 		errId = m_errId.getNextId(ec.value());
 		m_strand.post(boost::bind(&TcpSocket::onError, this, errId, ec.message()));
 		return errId;
@@ -98,11 +106,13 @@ void TcpSocket::doReconnect(const boost::system::error_code& ec)
 {
 	if (ec)
 	{
+		m_working.exchange(false);
 		m_strand.post(boost::bind(&TcpSocket::onError, this, m_errId.getNextId(ec.value()), ec.message()));
 		return;
 	}
 	if (m_ep.port() == 0)
 	{
+		m_working.exchange(false);
 		std::string msg = "boost::asio::ip::tcp::endpoint abnormal, port==0.";
 		m_strand.post(boost::bind(&TcpSocket::onError, this, m_errId.getNextId(-1), msg));
 		return;
@@ -121,20 +131,32 @@ void TcpSocket::doReconnect(const boost::system::error_code& ec)
 	}
 }
 
-void TcpSocket::send(const char* p, std::uint32_t len)
+int TcpSocket::send(const char* p, std::uint32_t len)
 {
-    if (true)
-    {
-        std::lock_guard<std::mutex> lg(m_bufSend.m_mutex);
-        m_bufSend.m_bufWait.append(p, len);
-        if (m_bufSend.m_isSending)
-            return;
-    }
-    sendAsync(0);
+	int errId = 0;
+	if (m_working.load() == false)
+	{
+		errId = m_errId.getNextId(-1);
+		std::string msg = "The socket is no longer working.";
+		m_strand.post(boost::bind(&TcpSocket::onError, this, errId, msg));
+		return errId;
+	}
+	if (true)
+	{
+		std::lock_guard<std::mutex> lg(m_bufSend.m_mutex);
+		m_bufSend.m_bufWait.append(p, len);
+		if (m_bufSend.m_isSending)
+			return errId;
+	}
+	doSendAsync(0);
+	return errId;
 }
 
-void TcpSocket::sendAsync(std::size_t lastLengthSent)
+void TcpSocket::doSendAsync(std::size_t lastLengthSent)
 {
+	if (m_working.load() == false)
+		return;
+
 	const char* p = nullptr;
 	std::uint32_t len = 0;
     if (true)
@@ -162,33 +184,50 @@ void TcpSocket::sendAsync(std::size_t lastLengthSent)
         }
     }
     //基于什么思考,要使用m_strand.wrap包装一下handler呢?
-    m_socket->async_send(boost::asio::buffer(p, len), m_strand.wrap(/*用std::bind会出错*/boost::bind(&TcpSocket::sendAsyncHandler, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred)));
+    m_socket->async_send(boost::asio::buffer(p, len), m_strand.wrap(/*用std::bind会出错*/boost::bind(&TcpSocket::doSendAsyncHandler, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred)));
 }
 
-void TcpSocket::sendAsyncHandler(const boost::system::error_code& ec, std::size_t bytes_transferred)
+void TcpSocket::doSendAsyncHandler(const boost::system::error_code& ec, std::size_t bytes_transferred)
 {
     if (ec)
     {
 		m_strand.post(boost::bind(&TcpSocket::onError, this, m_errId.getNextId(ec.value()), ec.message()));
         return;
     }
-    sendAsync(bytes_transferred);
+    doSendAsync(bytes_transferred);
 }
 
-void TcpSocket::startRecvAsync()
+int TcpSocket::startRecvAsync()
 {
-    if (true)
-    {
-        std::lock_guard<std::mutex> lg(m_bufRecv.m_mutex);
-        if (m_bufRecv.m_isRecving)
-            return;
-        else
-            m_bufRecv.m_isRecving = true;
-    }
-    recvAsync();
+	int errId = 0;
+	if (m_working.load() == false)
+	{
+		errId = m_errId.getNextId(-1);
+		std::string msg = "The socket is no longer working.";
+		m_strand.post(boost::bind(&TcpSocket::onError, this, errId, msg));
+		return errId;
+	}
+	bool needRecv = true;
+	if (true)
+	{
+		std::lock_guard<std::mutex> lg(m_bufRecv.m_mutex);
+		if (m_bufRecv.m_isRecving)
+			needRecv = false;
+		else
+			m_bufRecv.m_isRecving = true;
+	}
+	if (!needRecv)
+	{
+		errId = m_errId.getNextId(-1);
+		std::string msg = "The socket is already receiving.";
+		m_strand.post(boost::bind(&TcpSocket::onError, this, errId, msg));
+		return errId;
+	}
+	doRecvAsync();
+	return errId;
 }
 
-void TcpSocket::recvAsync()
+void TcpSocket::doRecvAsync()
 {
 	char* p = nullptr;
 	std::uint32_t len = 0;
@@ -206,23 +245,30 @@ void TcpSocket::recvAsync()
 	{
 		assert(false);
 	}
-	m_socket->async_receive(boost::asio::buffer(p, len), m_strand.wrap(boost::bind(&TcpSocket::recvAsyncHandler, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred)));
+	m_socket->async_receive(boost::asio::buffer(p, len), m_strand.wrap(boost::bind(&TcpSocket::doRecvAsyncHandler, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred)));
 }
 
-void TcpSocket::recvAsyncHandler(const boost::system::error_code& ec, std::size_t bytes_transferred)
+void TcpSocket::doRecvAsyncHandler(const boost::system::error_code& ec, std::size_t bytes_transferred)
 {
 	if (true)
 	{
 		std::lock_guard<std::mutex> lg(m_bufRecv.m_mutex);
 		if (ec)
 		{
-			//TODO:断线.
+			boost::system::error_code err(boost::asio::error::network_down);
+			m_strand.post(boost::bind(&TcpSocket::onDisconnected, this, m_errId.getNextId(err.value()), err.message()));
 			m_bufRecv.m_isRecving = false;
 			return;
 		}
 		m_bufRecv.m_posEnd += bytes_transferred;
 	}
-	recvAsync();
+	if (m_working.load() == false)
+	{
+		std::string msg = "The socket is no longer working.";
+		m_strand.post(boost::bind(&TcpSocket::onError, this, m_errId.getNextId(-1), msg));
+		return;
+	}
+	doRecvAsync();
 }
 #endif//TcpSocket
 

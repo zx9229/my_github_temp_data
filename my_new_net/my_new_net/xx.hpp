@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <mutex>
 #include <memory>
+#include <atomic>
 #include <boost/asio.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/steady_timer.hpp>
@@ -62,18 +63,20 @@ public:
 	boost::asio::ip::tcp::endpoint localPoint();
 	boost::asio::ip::tcp::endpoint remotePoint();
 	int connect(const std::string& ip, std::uint16_t port);
-	void send(const char* p, std::uint32_t len);
-	void startRecvAsync();
+	int send(const char* p, std::uint32_t len);
+	int startRecvAsync();
 	void onRtnStream() {}
 	void onRtnMessage() {}
 	void onError(int errId, std::string errMsg) {}
 	void onConnected(){}
+	void onDisconnected(int errId,std::string errMsg){}
 private:
+	void doClose(){}
 	void doReconnect(const boost::system::error_code& ec);
-	void sendAsync(std::size_t lastLengthSent);
-	void sendAsyncHandler(const boost::system::error_code& ec, std::size_t bytes_transferred);
-	void recvAsync();
-	void recvAsyncHandler(const boost::system::error_code& error, std::size_t bytes_transferred);
+	void doSendAsync(std::size_t lastLengthSent);
+	void doSendAsyncHandler(const boost::system::error_code& ec, std::size_t bytes_transferred);
+	void doRecvAsync();
+	void doRecvAsyncHandler(const boost::system::error_code& error, std::size_t bytes_transferred);
 private:
 	boost::asio::strand m_strand;
 	BoostSocketPtr m_socket;//要求:类创建完成后,指针肯定不为空,socket一定是存在的.
@@ -82,6 +85,7 @@ private:
 	SendBuffer m_bufSend;
 	RecvBuffer m_bufRecv;
 	ErrorId m_errId;
+	std::atomic_bool m_working;
 };
 #include "xx_impl.hpp"
 #endif//XX_HPP
