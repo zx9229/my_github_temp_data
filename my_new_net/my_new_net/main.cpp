@@ -3,14 +3,7 @@
 
 int main()
 {
-    SendBufferEx sbe;
-    if (auto d = sbe.lock())
-    {
-        std::cout << d.m_posWork << std::endl;
-    }
-    if (auto d = sbe.lock())
-    {
-        std::cout << d.m_bufWait << std::endl;
-    }
+    boost::asio::io_service io;
+    TcpSocket sock(io);
     return 0;
 }
