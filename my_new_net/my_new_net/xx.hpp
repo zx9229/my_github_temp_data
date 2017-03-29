@@ -15,16 +15,16 @@ using BoostSocketPtr = std::unique_ptr<boost::asio::ip::tcp::socket>;
 class TcpSocket
 {
 private:
-	class ErrorId
-	{
-	public:
-		ErrorId() :m_id(0) {}
-	public:
-		int getNextId(int no);
-	private:
-		std::mutex m_mutex;
-		int m_id;
-	};
+	//class ErrorId
+	//{
+	//public:
+	//	ErrorId() :m_id(0) {}
+	//public:
+	//	int getNextId(int no);
+	//private:
+	//	std::mutex m_mutex;
+	//	int m_id;
+	//};
 	class SendBuffer
 	{
 	public:
@@ -72,7 +72,7 @@ public:
 	void onConnected(){}
 	void onDisconnected(const boost::system::error_code& ec){}
 private:
-	void doClose(){}
+	void doClose(const boost::system::error_code& ec);
 	void doReconnect(const boost::system::error_code& ec);
 	void doSendAsync(std::size_t lastLengthSent);
 	void doSendAsyncHandler(const boost::system::error_code& ec, std::size_t bytes_transferred);
@@ -85,8 +85,8 @@ private:
 	boost::asio::ip::tcp::endpoint m_ep;
 	SendBuffer m_bufSend;
 	RecvBuffer m_bufRecv;
-	ErrorId m_errId;
-	std::atomic_bool m_working;
+	std::atomic_bool m_isWorking;
+	std::atomic_bool m_isConnected;
 };
 #include "xx_impl.hpp"
 #endif//XX_HPP
