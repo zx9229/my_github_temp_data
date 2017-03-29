@@ -81,28 +81,42 @@ boost::asio::ip::tcp::endpoint TcpSocket::remotePoint()
 
 int TcpSocket::connect(const std::string& ip, std::uint16_t port)
 {
-    int errId = 0;
-    if (m_isWorking.exchange(true) == true)
-    {
-		errId = -1;
-        std::string msg = "The socket is already working.";
-        m_strand.post(boost::bind(&TcpSocket::onError, this, errId, msg));
-        return errId;
-    }
-    boost::system::error_code ec;
-    boost::asio::ip::address addr = boost::asio::ip::address::from_string(ip, ec);
+	boost::system::error_code ec;
+	boost::asio::ip::address addr = boost::asio::ip::address::from_string(ip, ec);
 	if (ec)
 	{
-		m_isWorking.exchange(false);
-		errId = ec.value();
-		m_strand.post(boost::bind(&TcpSocket::onError, this, errId, ec.message()));
-		return errId;
+		m_strand.post(boost::bind(&TcpSocket::onError, this, ec.value(), ec.message()));
+		return ec.value();
 	}
-    m_ep.address(addr);
-    m_ep.port(port);
-    m_timer.expires_from_now(std::chrono::milliseconds(0));
-    m_timer.async_wait(boost::bind(&TcpSocket::doReconnect, this, boost::asio::placeholders::error));
-    return errId;
+	if (m_isConnected.load())
+	{
+		std::string msg = "The socket has been connected.";
+		m_strand.post(boost::bind(&TcpSocket::onError, this, -1, msg));
+		return -1;
+	}
+	if (m_isWorking.exchange(true) == true)
+	{
+		std::string msg = "The socket is already working.";
+		m_strand.post(boost::bind(&TcpSocket::onError, this, -1, msg));
+		return -1;
+	}
+	m_ep.address(addr);
+	m_ep.port(port);
+	m_timer.expires_from_now(std::chrono::milliseconds(0));
+	m_timer.async_wait(boost::bind(&TcpSocket::doReconnect, this, boost::asio::placeholders::error));
+	return 0;
+}
+
+void TcpSocket::doConnected()
+{
+	if (m_isConnected.exchange(true) == false)
+	{
+		m_strand.post(boost::bind(&TcpSocket::onConnected, this));
+	}
+	else
+	{
+		assert(false);
+	}
 }
 
 void TcpSocket::doClose(const boost::system::error_code& ec)
@@ -136,14 +150,15 @@ void TcpSocket::doClose(const boost::system::error_code& ec)
 
 void TcpSocket::doReconnect(const boost::system::error_code& ec)
 {
+	assert(m_isConnected.load() == false);
     if (m_isWorking.load() == false)
     {
         return;
     }
 	if (ec)
 	{
-		m_isWorking.exchange(false);
 		m_strand.post(boost::bind(&TcpSocket::onError, this, ec.value(), ec.message()));
+		m_strand.post(boost::bind(&TcpSocket::doClose, this, ec));
 		return;
 	}
 	boost::system::error_code err;
@@ -156,8 +171,8 @@ void TcpSocket::doReconnect(const boost::system::error_code& ec)
 	}
 	else
 	{
-		m_strand.post(boost::bind(&TcpSocket::onConnected, this));
-        startRecvAsync();
+		doConnected();
+		startRecvAsync();
 	}
 }
 
@@ -229,32 +244,27 @@ void TcpSocket::doSendAsyncHandler(const boost::system::error_code& ec, std::siz
 
 int TcpSocket::startRecvAsync()
 {
-	int errId = 0;
-	if (m_isWorking.load() == false)
+	if (m_isConnected.load() == false)
 	{
-		errId = -1;
-		std::string msg = "The socket is no longer working.";
-		m_strand.post(boost::bind(&TcpSocket::onError, this, errId, msg));
-		return errId;
+		std::string msg = "The socket is not connected.";
+		m_strand.post(boost::bind(&TcpSocket::onError, this, -1, msg));
+		return -1;
 	}
 	bool needRecv = true;
 	if (true)
 	{
 		std::lock_guard<std::mutex> lg(m_bufRecv.m_mutex);
-		if (m_bufRecv.m_isRecving)
-			needRecv = false;
-		else
-			m_bufRecv.m_isRecving = true;
+		needRecv = m_bufRecv.m_isRecving ? false : true;
+		m_bufRecv.m_isRecving = true;
 	}
 	if (!needRecv)
 	{
-		errId = -1;
 		std::string msg = "The socket is already receiving.";
-		m_strand.post(boost::bind(&TcpSocket::onError, this, errId, msg));
-		return errId;
+		m_strand.post(boost::bind(&TcpSocket::onError, this, -1, msg));
+		return -1;
 	}
 	doRecvAsync();
-	return errId;
+	return 0;
 }
 
 void TcpSocket::doRecvAsync()
