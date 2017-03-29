@@ -53,6 +53,11 @@ TcpSocket::TcpSocket(BoostSocketPtr& sock) : m_strand(sock->get_io_service()), m
 	m_socket = std::move(sock);
 }
 
+bool TcpSocket::isWorking() const
+{
+    return m_working;
+}
+
 bool TcpSocket::isOpen() const
 {
     return m_socket->is_open();
@@ -60,10 +65,17 @@ bool TcpSocket::isOpen() const
 
 void TcpSocket::close()
 {
-    m_ep = boost::asio::ip::tcp::endpoint();
-    m_socket->close();
-    //TODO:接收线程可能正在接收数据,或处理数据.
-	//TODO:清理发送缓冲区和接收缓冲区.
+    if (m_working.exchange(false) == true)
+    {
+        m_ep = boost::asio::ip::tcp::endpoint();
+        boost::system::error_code ec;
+        m_socket->close(ec);
+        m_socket->shutdown(boost::asio::socket_base::shutdown_both, ec);
+        //TODO:接收线程可能正在接收数据,或处理数据.
+        //TODO:清理发送缓冲区和接收缓冲区.
+        m_bufSend.reset();
+        m_bufRecv.reset();
+    }
 }
 
 boost::asio::ip::tcp::endpoint TcpSocket::localPoint()
@@ -78,43 +90,40 @@ boost::asio::ip::tcp::endpoint TcpSocket::remotePoint()
 
 int TcpSocket::connect(const std::string& ip, std::uint16_t port)
 {
-	int errId = 0;
-	if (m_working.load() == true || m_working.exchange(true) == true)
-	{
-		errId = m_errId.getNextId(-1);
-		std::string msg = "The socket is already working.";
-		m_strand.post(boost::bind(&TcpSocket::onError, this, errId, msg));
-		return errId;
-	}
-	boost::system::error_code ec;
-	boost::asio::ip::address addr = boost::asio::ip::address::from_string(ip, ec);
-	if (ec)
-	{
-		m_working.exchange(false);
-		errId = m_errId.getNextId(ec.value());
-		m_strand.post(boost::bind(&TcpSocket::onError, this, errId, ec.message()));
-		return errId;
-	}
-	m_ep.address(addr);
-	m_ep.port(port);
-	m_timer.expires_from_now(std::chrono::milliseconds(0));
-	m_timer.async_wait(boost::bind(&TcpSocket::doReconnect, this, boost::asio::placeholders::error));
-	return errId;
+    int errId = 0;
+    if (m_working.exchange(true) == true)
+    {
+        errId = m_errId.getNextId(-1);
+        std::string msg = "The socket is already working.";
+        m_strand.post(boost::bind(&TcpSocket::onError, this, errId, msg));
+        return errId;
+    }
+    boost::system::error_code ec;
+    boost::asio::ip::address addr = boost::asio::ip::address::from_string(ip, ec);
+    if (ec)
+    {
+        m_working.exchange(false);
+        errId = m_errId.getNextId(ec.value());
+        m_strand.post(boost::bind(&TcpSocket::onError, this, errId, ec.message()));
+        return errId;
+    }
+    m_ep.address(addr);
+    m_ep.port(port);
+    m_timer.expires_from_now(std::chrono::milliseconds(0));
+    m_timer.async_wait(boost::bind(&TcpSocket::doReconnect, this, boost::asio::placeholders::error));
+    return errId;
 }
 
 void TcpSocket::doReconnect(const boost::system::error_code& ec)
 {
+    if (m_working.load() == false)
+    {
+        return;
+    }
 	if (ec)
 	{
 		m_working.exchange(false);
 		m_strand.post(boost::bind(&TcpSocket::onError, this, m_errId.getNextId(ec.value()), ec.message()));
-		return;
-	}
-	if (m_ep.port() == 0)
-	{
-		m_working.exchange(false);
-		std::string msg = "boost::asio::ip::tcp::endpoint abnormal, port==0.";
-		m_strand.post(boost::bind(&TcpSocket::onError, this, m_errId.getNextId(-1), msg));
 		return;
 	}
 	boost::system::error_code err;
@@ -128,6 +137,7 @@ void TcpSocket::doReconnect(const boost::system::error_code& ec)
 	else
 	{
 		m_strand.post(boost::bind(&TcpSocket::onConnected, this));
+        startRecvAsync();
 	}
 }
 
@@ -256,7 +266,7 @@ void TcpSocket::doRecvAsyncHandler(const boost::system::error_code& ec, std::siz
 		if (ec)
 		{
 			boost::system::error_code err(boost::asio::error::network_down);
-			m_strand.post(boost::bind(&TcpSocket::onDisconnected, this, m_errId.getNextId(err.value()), err.message()));
+            m_strand.post(boost::bind(&TcpSocket::onDisconnected, this, ec));
 			m_bufRecv.m_isRecving = false;
 			return;
 		}

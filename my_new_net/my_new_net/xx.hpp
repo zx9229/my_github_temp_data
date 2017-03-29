@@ -58,6 +58,7 @@ public:
 	TcpSocket(boost::asio::io_service& io);
 	TcpSocket(BoostSocketPtr& sock);
 public:
+    bool isWorking() const;
 	bool isOpen() const;
 	void close();
 	boost::asio::ip::tcp::endpoint localPoint();
@@ -69,7 +70,7 @@ public:
 	void onRtnMessage() {}
 	void onError(int errId, std::string errMsg) {}
 	void onConnected(){}
-	void onDisconnected(int errId,std::string errMsg){}
+	void onDisconnected(const boost::system::error_code& ec){}
 private:
 	void doClose(){}
 	void doReconnect(const boost::system::error_code& ec);
