@@ -15,16 +15,12 @@ using BoostSocketPtr = std::unique_ptr<boost::asio::ip::tcp::socket>;
 class TcpSocket
 {
 private:
-    //class ErrorId
-    //{
-    //public:
-    //	ErrorId() :m_id(0) {}
-    //public:
-    //	int getNextId(int no);
-    //private:
-    //	std::mutex m_mutex;
-    //	int m_id;
-    //};
+#define TcpSocket_is_already_working   "TcpSocket is already working."
+#define TcpSocket_is_no_longer_working "TcpSocket is no longer working."
+#define TcpSocket_has_been_connected   "TcpSocket has been connected."
+#define TcpSocket_is_not_connected     "TcpSocket is not connected."
+#define TcpSocket_is_already_receiving "TcpSocket is already receiving."
+#define Invalid_peer_endpoint          "Invalid peer_endpoint."
     class SendBuffer
     {
     public:
@@ -59,13 +55,14 @@ public:
     TcpSocket(BoostSocketPtr& sock);
 public:
     bool isWorking() const;
+    bool isConnected() const;
     bool isOpen() const;
-    void close();
     boost::asio::ip::tcp::endpoint localPoint();
     boost::asio::ip::tcp::endpoint remotePoint();
     int connect(const std::string& ip, std::uint16_t port);
+    void close();
     int send(const char* p, std::uint32_t len);
-    int startRecvAsync();
+    int startRecvAsync();//ok
     void onRtnStream() {}
     void onRtnMessage() {}
     void onError(int errId, std::string errMsg) {}
@@ -73,21 +70,25 @@ public:
     void onDisconnected(const boost::system::error_code& ec) {}
 private:
     void doConnected();
-    void doClose(const boost::system::error_code& ec);
+    void doDisconnected(const boost::system::error_code& ec);
+    void doStopWork(const boost::system::error_code& ec);
+    void doStopConnection(const boost::system::error_code& ec);
+    void doReconnectEntry(const boost::system::error_code& ec);
     void doReconnect(const boost::system::error_code& ec);
     void doSendAsync(std::size_t lastLengthSent);
     void doSendAsyncHandler(const boost::system::error_code& ec, std::size_t bytes_transferred);
-    void doRecvAsync();
-    void doRecvAsyncHandler(const boost::system::error_code& error, std::size_t bytes_transferred);
+    void doRecvAsync(std::size_t lastLengthReceived);//ok
+    void doRecvAsyncHandler(const boost::system::error_code& error, std::size_t bytes_transferred);//ok
 private:
     boost::asio::strand m_strand;
     BoostSocketPtr m_socket;//要求:类创建完成后,指针肯定不为空,socket一定是存在的.
     boost::asio::steady_timer m_timer;
-    boost::asio::ip::tcp::endpoint m_ep;
-    SendBuffer m_bufSend;
-    RecvBuffer m_bufRecv;
+    boost::asio::ip::tcp::endpoint m_peerPoint;//如果peerPoint为空,则不会断线重连.
+    SendBuffer m_sendBuf;
+    RecvBuffer m_recvBuf;
     std::atomic_bool m_isWorking;
+    std::atomic_bool m_isConnecting;
     std::atomic_bool m_isConnected;
-}
+};
 #include "xx_impl.hpp"
 #endif//XX_HPP

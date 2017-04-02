@@ -5,8 +5,8 @@ class TcpSocket
 {
 public:
 private:
-    std::string m_bufSend;
-    std::string m_bufRecv;
+    std::string m_sendBuf;
+    std::string m_recvBuf;
 };
 
 class TcpClient
