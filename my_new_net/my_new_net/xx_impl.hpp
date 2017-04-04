@@ -46,6 +46,11 @@ TcpSocket::TcpSocket(BoostSocketPtr& sock, bool isWorking)
     m_socket = std::move(sock);
 }
 
+TcpSocket::~TcpSocket()
+{
+    close();
+}
+
 /************************************************************************/
 /* 这个TcpSocket是不是一个有效的(处于工作状态的)TcpSocket.                 */
 /* 如果这个TcpSocket是一个连接到监听端口的socket,那么它可能处于的状态有:      */
@@ -87,7 +92,7 @@ int TcpSocket::connect(const std::string& ip, std::uint16_t port)
     boost::asio::ip::address addr = boost::asio::ip::address::from_string(ip, ec);
     if (ec)
     {
-        m_strand.post(boost::bind(&TcpSocket::onError, this, ec.value(), ec.message()));
+        m_strand.post(boost::bind(&TcpSocket::cbOnError, this, ec.value(), ec.message()));
         return ec.value();
     }
     boost::asio::ip::tcp::endpoint peerPoint(addr, port);
@@ -134,7 +139,7 @@ void TcpSocket::doConnected()
     //保证 onConnected 和 onDisconnected 成对的被回调.
 	if (m_isConnected.exchange(true) == false)
 	{
-		m_strand.post(boost::bind(&TcpSocket::onConnected, this));
+		m_strand.post(boost::bind(&TcpSocket::cbOnConnected, this));
 	}
 	else
 	{
@@ -150,7 +155,7 @@ void TcpSocket::doDisconnected(const boost::system::error_code& ec)
     //保证 onConnected 和 onDisconnected 成对的被回调.
     if (m_isConnected.exchange(false) == true)
     {
-        m_strand.post(boost::bind(&TcpSocket::onDisconnected, this, ec));
+        m_strand.post(boost::bind(&TcpSocket::cbOnDisconnected, this, ec));
     }
 }
 /************************************************************************/
@@ -162,7 +167,7 @@ int TcpSocket::doWorkStart(const boost::asio::ip::tcp::endpoint& peerPoint)
     if (m_isWorking.exchange(true) == true)
     {
         std::string msg = TcpSocket_is_already_working;
-        m_strand.post(boost::bind(&TcpSocket::onError, this, -1, msg));
+        m_strand.post(boost::bind(&TcpSocket::cbOnError, this, -1, msg));
         return -1;
     }
     //m_peerPoint没有加锁,我用port==0判断是否需要重连.
@@ -191,12 +196,11 @@ void TcpSocket::doStopBoostSocket(const boost::system::error_code& ec)
     m_socket->close(err);
     if (err)
     {
-        m_strand.post(boost::bind(&TcpSocket::onError, this, err.value(), err.message()));
+        m_strand.post(boost::bind(&TcpSocket::cbOnError, this, err.value(), err.message()));
     }
     m_socket->shutdown(boost::asio::socket_base::shutdown_both, err);
     if (err)
     {
-        //m_strand.post(boost::bind(&TcpSocket::onError, this, err.value(), err.message()));
     }
     doDisconnected(ec);
 }
@@ -237,7 +241,7 @@ void TcpSocket::doReconnectImpl(const boost::system::error_code& ec)
     assert(m_isConnecting.load() == true);
     if (ec)
     {
-        m_strand.post(boost::bind(&TcpSocket::onError, this, ec.value(), ec.message()));
+        m_strand.post(boost::bind(&TcpSocket::cbOnError, this, ec.value(), ec.message()));
         doReconnectStop();
         doWorkStop(ec);
         return;
@@ -245,7 +249,7 @@ void TcpSocket::doReconnectImpl(const boost::system::error_code& ec)
     if (m_peerPoint.port() == 0)
     {
         std::string msg = peer_endpoint_is_unreachable;
-        m_strand.post(boost::bind(&TcpSocket::onError, this, -1, msg));
+        m_strand.post(boost::bind(&TcpSocket::cbOnError, this, -1, msg));
         doReconnectStop();
         doWorkStop(boost::system::error_code(boost::asio::error::network_unreachable));
         return;
@@ -254,7 +258,7 @@ void TcpSocket::doReconnectImpl(const boost::system::error_code& ec)
     m_socket->connect(m_peerPoint, err);
     if (err)
     {
-        m_strand.post(boost::bind(&TcpSocket::onError, this, err.value(), err.message()));
+        m_strand.post(boost::bind(&TcpSocket::cbOnError, this, err.value(), err.message()));
         m_timer.expires_from_now(std::chrono::milliseconds(5000));
         m_timer.async_wait(boost::bind(&TcpSocket::doReconnectImpl, this, boost::asio::placeholders::error));
     }
@@ -271,7 +275,7 @@ int TcpSocket::send(const char* p, std::uint32_t len)
     if (m_isWorking.load() == false)
     {
         std::string msg = TcpSocket_is_no_longer_working;
-        m_strand.post(boost::bind(&TcpSocket::onError, this, -1, msg));
+        m_strand.post(boost::bind(&TcpSocket::cbOnError, this, -1, msg));
         return -1;
     }
     if (true)
@@ -322,7 +326,7 @@ void TcpSocket::doSendAsyncHandler(const boost::system::error_code& ec, std::siz
     if (ec)
     {
         m_sendBuf.reset();
-        m_strand.post(boost::bind(&TcpSocket::onError, this, ec.value(), ec.message()));
+        m_strand.post(boost::bind(&TcpSocket::cbOnError, this, ec.value(), ec.message()));
         doReconnectStart(ec);
     }
     else
@@ -336,13 +340,13 @@ int TcpSocket::startRecvAsync()
     if (m_isWorking.load() == false)
     {
         std::string msg = TcpSocket_is_no_longer_working;
-        m_strand.post(boost::bind(&TcpSocket::onError, this, -1, msg));
+        m_strand.post(boost::bind(&TcpSocket::cbOnError, this, -1, msg));
         return -1;
     }
     if (m_isConnected.load() == false)
     {
         std::string msg = TcpSocket_is_not_connected;
-        m_strand.post(boost::bind(&TcpSocket::onError, this, -1, msg));
+        m_strand.post(boost::bind(&TcpSocket::cbOnError, this, -1, msg));
         return -1;
     }
 
@@ -350,7 +354,7 @@ int TcpSocket::startRecvAsync()
     if (m_recvBuf.m_isRecving)
     {
         std::string msg = TcpSocket_is_already_receiving;
-        m_strand.post(boost::bind(&TcpSocket::onError, this, -1, msg));
+        m_strand.post(boost::bind(&TcpSocket::cbOnError, this, -1, msg));
         return -1;
     }
     else
@@ -394,7 +398,7 @@ void TcpSocket::doRecvAsync(std::size_t lastLengthReceived)
     {
         boost::system::error_code ec(boost::asio::error::message_size);
         m_recvBuf.reset();
-        m_strand.post(boost::bind(&TcpSocket::onError, this, ec.value(), ec.message()));
+        m_strand.post(boost::bind(&TcpSocket::cbOnError, this, ec.value(), ec.message()));
         doReconnectStart(ec);
     }
 }
@@ -407,7 +411,7 @@ void TcpSocket::doRecvAsyncHandler(const boost::system::error_code& ec, std::siz
     if (ec)
     {
         m_recvBuf.reset();
-        m_strand.post(boost::bind(&TcpSocket::onError, this, ec.value(), ec.message()));
+        m_strand.post(boost::bind(&TcpSocket::cbOnError, this, ec.value(), ec.message()));
         doReconnectStart(ec);
     }
     else
@@ -415,6 +419,121 @@ void TcpSocket::doRecvAsyncHandler(const boost::system::error_code& ec, std::siz
         doRecvAsync(bytes_transferred);
     }
 }
+
+void TcpSocket::cbOnConnected()
+{
+    if (cb_onConnected)
+        cb_onConnected();
+    else
+        onConnected();
+}
+
+void TcpSocket::cbOnDisconnected(const boost::system::error_code& ec)
+{
+    if (cb_onDisconnected)
+        cb_onDisconnected(ec);
+    else
+        onDisconnected(ec);
+}
+
+void TcpSocket::cbOnError(int errId, std::string errMsg)
+{
+    if (cb_onError)
+        cb_onError(errId, errMsg);
+    else
+        onError(errId, errMsg);
+}
+
+void TcpSocket::cbOnConnectedSetter(const std::function<void()>& func)
+{
+    cb_onConnected = func;
+}
+
+void TcpSocket::cbOnDisconnectedSetter(const std::function<void(const boost::system::error_code & ec)>& func)
+{
+    cb_onDisconnected = func;
+}
+
+void TcpSocket::cbOnErrorSetter(const std::function<void(int errId, std::string errMsg)>& func)
+{
+    cb_onError = func;
+}
 #endif//TcpSocket
+
+#if 1 //TcpClient
+TcpClient::TcpClient(int threadId) :m_wk(m_io), m_ioRef(m_io), m_sock(m_ioRef)
+{
+    for (int i = 0; i < threadId; ++i)
+    {
+        m_thgp.create_thread(boost::bind(&boost::asio::io_service::run, boost::ref(m_io)));
+    }
+    bindCallbacks(true);
+}
+
+TcpClient::TcpClient(boost::asio::io_service& io) :m_wk(m_io), m_ioRef(io), m_sock(m_ioRef)
+{
+    bindCallbacks(false);
+}
+
+TcpClient::~TcpClient()
+{
+    m_wk.~work();
+    m_io.stop();
+    m_thgp.join_all();
+}
+
+void TcpClient::bindCallbacks(bool isBind)
+{
+    if (isBind)
+    {
+        m_sock.cbOnConnectedSetter(std::bind(&TcpClient::onConnected, this));
+        m_sock.cbOnDisconnectedSetter(std::bind(&TcpClient::onDisconnected, this, std::placeholders::_1));
+        m_sock.cbOnErrorSetter(std::bind(&TcpClient::onError, this, std::placeholders::_1, std::placeholders::_2));
+    }
+    else
+    {
+        m_sock.cbOnConnectedSetter(nullptr);
+        m_sock.cbOnDisconnectedSetter(nullptr);
+        m_sock.cbOnErrorSetter(nullptr);
+    }
+}
+
+int TcpClient::connect(const std::string& ip, std::uint16_t port)
+{
+    return m_sock.connect(ip, port);
+}
+
+int TcpClient::send(const char* p, std::uint32_t len)
+{
+    return m_sock.send(p, len);
+}
+
+void TcpClient::close()
+{
+    m_sock.close();
+}
+
+void TcpClient::onConnected()
+{
+    std::cout << "TcpClient::onConnected" << std::endl;
+}
+
+void TcpClient::onDisconnected(const boost::system::error_code& ec)
+{
+    std::cout << "TcpClient::onDisconnected," << ec.value() << ec.message() << std::endl;
+}
+
+void TcpClient::onError(int errId, std::string errMsg)
+{
+    std::cout << "TcpClient::onError," << errId << errMsg << std::endl;
+}
+#endif//TcpClient
+
+#if 1 //TcpServer
+int TcpServer::start(const std::string& addr, std::uint16_t port)
+{
+    return -1;
+}
+#endif//TcpServer
 
 #endif//xx_impl_H

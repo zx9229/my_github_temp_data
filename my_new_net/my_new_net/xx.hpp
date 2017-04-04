@@ -9,6 +9,7 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/steady_timer.hpp>
 #include <boost/bind.hpp>
+#include <boost/thread.hpp>
 /************************************************************************/
 /*                                                                      */
 /************************************************************************/
@@ -54,6 +55,7 @@ private:
 public:
     TcpSocket(boost::asio::io_service& io);
     TcpSocket(BoostSocketPtr& sock, bool isWorking);
+    ~TcpSocket();
 public:
     bool isWorking() const;
     bool isConnected() const;
@@ -88,6 +90,14 @@ private:
     void doRecvAsync(std::size_t lastLengthReceived);//ok
     void doRecvAsyncHandler(const boost::system::error_code& error, std::size_t bytes_transferred);//ok
 private:
+    void cbOnConnected();
+    void cbOnDisconnected(const boost::system::error_code& ec);
+    void cbOnError(int errId, std::string errMsg);
+public:
+    void cbOnConnectedSetter(const std::function<void()>& func);
+    void cbOnDisconnectedSetter(const std::function<void(const boost::system::error_code& ec)>& func);
+    void cbOnErrorSetter(const std::function<void(int errId, std::string errMsg)>& func);
+private:
     boost::asio::strand m_strand;
     BoostSocketPtr m_socket;//要求:类创建完成后,指针肯定不为空,socket一定是存在的.
     boost::asio::steady_timer m_timer;
@@ -97,6 +107,42 @@ private:
     std::atomic_bool m_isWorking;
     std::atomic_bool m_isConnected;
     std::atomic_bool m_isConnecting;
+    std::function<void()>                                    cb_onConnected;
+    std::function<void(const boost::system::error_code& ec)> cb_onDisconnected;
+    std::function<void(int errId, std::string errMsg)>       cb_onError;
+};
+
+class TcpClient
+{
+public:
+    TcpClient(int threadId);
+    TcpClient(boost::asio::io_service& io);
+    virtual ~TcpClient();
+public:
+    int connect(const std::string& ip, std::uint16_t port);
+    int send(const char* p, std::uint32_t len);
+    void close();
+    //callbacks.
+    void onConnected();
+    void onDisconnected(const boost::system::error_code& ec);
+    void onError(int errId, std::string errMsg);
+private:
+    void bindCallbacks(bool isBind);
+private:
+    boost::thread_group m_thgp;
+    boost::asio::io_service m_io;
+    boost::asio::io_service::work m_wk;
+    boost::asio::io_service& m_ioRef;
+    TcpSocket m_sock;
+};
+
+class TcpServer
+{
+
+public:
+    int start(const std::string& addr, std::uint16_t port);
+private:
+    boost::asio::ip::tcp::acceptor m_acceptor;
 };
 #include "xx_impl.hpp"
 #endif//XX_HPP
