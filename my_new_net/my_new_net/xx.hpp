@@ -4,6 +4,7 @@
 #include <mutex>
 #include <memory>
 #include <atomic>
+#include <iostream>
 #include <boost/asio.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/steady_timer.hpp>
@@ -20,7 +21,7 @@ private:
 #define TcpSocket_has_been_connected   "TcpSocket has been connected."
 #define TcpSocket_is_not_connected     "TcpSocket is not connected."
 #define TcpSocket_is_already_receiving "TcpSocket is already receiving."
-#define Invalid_peer_endpoint          "Invalid peer_endpoint."
+#define peer_endpoint_is_unreachable   "peer_endpoint is unreachable."
     class SendBuffer
     {
     public:
@@ -52,7 +53,7 @@ private:
     };
 public:
     TcpSocket(boost::asio::io_service& io);
-    TcpSocket(BoostSocketPtr& sock);
+    TcpSocket(BoostSocketPtr& sock, bool isWorking);
 public:
     bool isWorking() const;
     bool isConnected() const;
@@ -61,22 +62,29 @@ public:
     boost::asio::ip::tcp::endpoint remotePoint();
     int connect(const std::string& ip, std::uint16_t port);
     void close();
-    int send(const char* p, std::uint32_t len);
-    int startRecvAsync();//ok
-    void onRtnStream() {}
-    void onRtnMessage() {}
-    void onError(int errId, std::string errMsg) {}
-    void onConnected() {}
-    void onDisconnected(const boost::system::error_code& ec) {}
+    //callbacks.
+    void onConnected();
+    void onDisconnected(const boost::system::error_code& ec);
+    void onError(int errId, std::string errMsg);
+    void onRtnStream();
+    void onRtnMessage();
 private:
     void doConnected();
     void doDisconnected(const boost::system::error_code& ec);
-    void doStopWork(const boost::system::error_code& ec);
-    void doStopConnection(const boost::system::error_code& ec);
-    void doReconnectEntry(const boost::system::error_code& ec);
-    void doReconnect(const boost::system::error_code& ec);
+    int  doWorkStart(const boost::asio::ip::tcp::endpoint& peerPoint);
+    void doWorkStop(const boost::system::error_code& ec);
+    void doStopBoostSocket(const boost::system::error_code& ec);
+    void doReconnectStart(const boost::system::error_code& ec);
+    void doReconnectStop();
+    void doReconnectImpl(const boost::system::error_code& ec);
+public:
+    int send(const char* p, std::uint32_t len);
+private:
     void doSendAsync(std::size_t lastLengthSent);
     void doSendAsyncHandler(const boost::system::error_code& ec, std::size_t bytes_transferred);
+public:
+    int startRecvAsync();
+private:
     void doRecvAsync(std::size_t lastLengthReceived);//ok
     void doRecvAsyncHandler(const boost::system::error_code& error, std::size_t bytes_transferred);//ok
 private:
@@ -87,8 +95,8 @@ private:
     SendBuffer m_sendBuf;
     RecvBuffer m_recvBuf;
     std::atomic_bool m_isWorking;
-    std::atomic_bool m_isConnecting;
     std::atomic_bool m_isConnected;
+    std::atomic_bool m_isConnecting;
 };
 #include "xx_impl.hpp"
 #endif//XX_HPP

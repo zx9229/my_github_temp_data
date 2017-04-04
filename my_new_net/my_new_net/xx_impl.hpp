@@ -34,14 +34,16 @@ void TcpSocket::RecvBuffer::reset()
 }
 #endif//TcpSocket::RecvBuffer
 
-TcpSocket::TcpSocket(boost::asio::io_service& io) : m_strand(io), m_timer(io), m_isWorking(false)
+TcpSocket::TcpSocket(boost::asio::io_service& io)
+    : m_strand(io), m_timer(io), m_isWorking(false)
 {
-	m_socket = BoostSocketPtr(new boost::asio::ip::tcp::socket(io));
+    m_socket = BoostSocketPtr(new boost::asio::ip::tcp::socket(io));
 }
 
-TcpSocket::TcpSocket(BoostSocketPtr& sock) : m_strand(sock->get_io_service()), m_timer(sock->get_io_service()), m_isWorking(false)
+TcpSocket::TcpSocket(BoostSocketPtr& sock, bool isWorking)
+    : m_strand(sock->get_io_service()), m_timer(sock->get_io_service()), m_isWorking(isWorking)
 {
-	m_socket = std::move(sock);
+    m_socket = std::move(sock);
 }
 
 /************************************************************************/
@@ -69,47 +71,60 @@ bool TcpSocket::isOpen() const
 
 boost::asio::ip::tcp::endpoint TcpSocket::localPoint()
 {
-    return m_socket->local_endpoint();
+    return m_socket->is_open() ? m_socket->local_endpoint() : boost::asio::ip::tcp::endpoint();
+    //return m_socket->local_endpoint();
 }
 
 boost::asio::ip::tcp::endpoint TcpSocket::remotePoint()
 {
-    return m_socket->remote_endpoint();
+    return m_socket->is_open() ? m_socket->remote_endpoint() : boost::asio::ip::tcp::endpoint();
+    //return m_socket->remote_endpoint();
 }
 
 int TcpSocket::connect(const std::string& ip, std::uint16_t port)
 {
-	boost::system::error_code ec;
-	boost::asio::ip::address addr = boost::asio::ip::address::from_string(ip, ec);
-	if (ec)
-	{
-		m_strand.post(boost::bind(&TcpSocket::onError, this, ec.value(), ec.message()));
-		return ec.value();
-	}
-	if (m_isConnected.load())
-	{
-		std::string msg = TcpSocket_has_been_connected;
-		m_strand.post(boost::bind(&TcpSocket::onError, this, -1, msg));
-		return -1;
-	}
-	if (m_isWorking.exchange(true) == true)
-	{
-		std::string msg = TcpSocket_is_already_working;
-		m_strand.post(boost::bind(&TcpSocket::onError, this, -1, msg));
-		return -1;
-	}
-	m_peerPoint.address(addr);
-	m_peerPoint.port(port);
-	m_timer.expires_from_now(std::chrono::milliseconds(0));
-	m_timer.async_wait(boost::bind(&TcpSocket::doReconnect, this, boost::asio::placeholders::error));
-	return 0;
+    boost::system::error_code ec;
+    boost::asio::ip::address addr = boost::asio::ip::address::from_string(ip, ec);
+    if (ec)
+    {
+        m_strand.post(boost::bind(&TcpSocket::onError, this, ec.value(), ec.message()));
+        return ec.value();
+    }
+    boost::asio::ip::tcp::endpoint peerPoint(addr, port);
+    return doWorkStart(peerPoint);
 }
 
 void TcpSocket::close()
 {
     boost::system::error_code ec(boost::asio::error::network_down);
-    doStopWork(ec);
+    doWorkStop(ec);
 }
+
+#if 1 //callbacks.
+void TcpSocket::onConnected()
+{
+    boost::asio::ip::tcp::endpoint lp = localPoint();
+    boost::asio::ip::tcp::endpoint rp = remotePoint();
+    char bufI2a[32];
+    _itoa_s(lp.port(), bufI2a, 10);
+    std::string lpStr = "local_Point:(" + lp.address().to_string() + "," + bufI2a + ")";
+    _itoa_s(rp.port(), bufI2a, 10);
+    std::string rpStr = "remotePoint:(" + rp.address().to_string() + "," + bufI2a + ")";
+    std::cout << "onConnected," << lpStr << "," << rpStr << std::endl;
+}
+void TcpSocket::onDisconnected(const boost::system::error_code& ec)
+{
+    boost::asio::ip::tcp::endpoint lp = localPoint();
+    boost::asio::ip::tcp::endpoint rp = remotePoint();
+    std::cout << "onDisconnected," << ec.value() << "," << ec.message() << std::endl;
+}
+void TcpSocket::onError(int errId, std::string errMsg)
+{
+    std::cout << "onError," << errId << "," << errMsg << std::endl;
+}
+void TcpSocket::onRtnStream() {}
+void TcpSocket::onRtnMessage() {}
+#endif//callbacks.
 
 /************************************************************************/
 /* 只有doConnected和doDisconnected允许修改m_isConnected,其它函数只允许读取.*/
@@ -137,42 +152,40 @@ void TcpSocket::doDisconnected(const boost::system::error_code& ec)
     {
         m_strand.post(boost::bind(&TcpSocket::onDisconnected, this, ec));
     }
-    //else
-    //{
-    //    assert(false);
-    //}
 }
-
-
-
-void TcpSocket::doStopWork(const boost::system::error_code& ec)
+/************************************************************************/
+/* 只有doWorkStart和doWorkStop可以修改m_isWorking的值                     */
+/* 只有doWorkStart可以将m_isWorking修改成true                            */
+/************************************************************************/
+int TcpSocket::doWorkStart(const boost::asio::ip::tcp::endpoint& peerPoint)
+{
+    if (m_isWorking.exchange(true) == true)
+    {
+        std::string msg = TcpSocket_is_already_working;
+        m_strand.post(boost::bind(&TcpSocket::onError, this, -1, msg));
+        return -1;
+    }
+    //m_peerPoint没有加锁,我用port==0判断是否需要重连.
+    m_peerPoint.address(peerPoint.address());
+    m_peerPoint.port(peerPoint.port());
+    doReconnectStart(boost::system::error_code());
+    return 0;
+}
+/************************************************************************/
+/* 只有doWorkStart和doWorkStop可以修改m_isWorking的值                     */
+/* 只有doWorkStop可以将m_isWorking修改成false                             */
+/************************************************************************/
+void TcpSocket::doWorkStop(const boost::system::error_code& ec)
 {
     if (m_isWorking.exchange(false) == false)
     {
         return;
     }
-    m_timer.cancel();
-    m_peerPoint = boost::asio::ip::tcp::endpoint();
-    boost::system::error_code err;
-    m_socket->close(err);
-    if (err)
-    {
-        m_strand.post(boost::bind(&TcpSocket::onError, this, err.value(), err.message()));
-    }
-    m_socket->shutdown(boost::asio::socket_base::shutdown_both, err);
-    if (err)
-    {
-        m_strand.post(boost::bind(&TcpSocket::onError, this, err.value(), err.message()));
-    }
-    //doClose的过程中,可能socket一直没有连接成功,但是在重连的过程中.
-    doDisconnected(ec);
-    //TODO:接收线程可能正在接收数据,或处理数据.
-    //TODO:清理发送缓冲区和接收缓冲区.
-    m_sendBuf.reset();
-    m_recvBuf.reset();
+    doReconnectStop();
+    doStopBoostSocket(ec);
 }
 
-void TcpSocket::doStopConnection(const boost::system::error_code& ec)
+void TcpSocket::doStopBoostSocket(const boost::system::error_code& ec)
 {
     boost::system::error_code err;
     m_socket->close(err);
@@ -183,26 +196,28 @@ void TcpSocket::doStopConnection(const boost::system::error_code& ec)
     m_socket->shutdown(boost::asio::socket_base::shutdown_both, err);
     if (err)
     {
-        m_strand.post(boost::bind(&TcpSocket::onError, this, err.value(), err.message()));
+        //m_strand.post(boost::bind(&TcpSocket::onError, this, err.value(), err.message()));
     }
     doDisconnected(ec);
-    //TODO:接收线程可能正在接收数据,或处理数据.
-    //TODO:清理发送缓冲区和接收缓冲区.
-    m_sendBuf.reset();
-    m_recvBuf.reset();
 }
 
-void TcpSocket::doReconnectEntry(const boost::system::error_code& ec)
+void TcpSocket::doReconnectStart(const boost::system::error_code& ec)
 {
     if (m_isConnecting.exchange(true) == true)
     {
         return;
     }
-    //m_isConnected字段在doStopConnection里面被修改了.
-    doStopConnection(ec);
+
+    //m_isConnected字段在doStopBoostSocket里的doDisconnected里面被修改了.
+    doStopBoostSocket(ec);
 
     m_timer.expires_from_now(std::chrono::milliseconds(0));
-    m_timer.async_wait(boost::bind(&TcpSocket::doReconnect, this, boost::asio::placeholders::error));
+    m_timer.async_wait(boost::bind(&TcpSocket::doReconnectImpl, this, boost::asio::placeholders::error));
+}
+void TcpSocket::doReconnectStop()
+{
+    m_timer.cancel();
+    m_isConnecting.exchange(false);
 }
 /************************************************************************/
 /* 在(断线)重连的过程中,m_isWorking==true,m_isConnected==false,           */
@@ -210,11 +225,12 @@ void TcpSocket::doReconnectEntry(const boost::system::error_code& ec)
 /* 的socket,此时就会让m_isWorking==false(此时m_isConnected必定是false),   */
 /* 同时退出重连的逻辑.                                                    */
 /************************************************************************/
-void TcpSocket::doReconnect(const boost::system::error_code& ec)
+void TcpSocket::doReconnectImpl(const boost::system::error_code& ec)
 {
     if (m_isWorking.load() == false)
     {
-        doStopWork(ec);
+        doReconnectStop();
+        doWorkStop(ec);
         return;
     }
     assert(m_isConnected.load() == false);
@@ -222,14 +238,16 @@ void TcpSocket::doReconnect(const boost::system::error_code& ec)
     if (ec)
     {
         m_strand.post(boost::bind(&TcpSocket::onError, this, ec.value(), ec.message()));
-        doStopWork(ec);
+        doReconnectStop();
+        doWorkStop(ec);
         return;
     }
-    if (boost::asio::ip::tcp::endpoint() == m_peerPoint)
+    if (m_peerPoint.port() == 0)
     {
-        std::string msg = Invalid_peer_endpoint;
+        std::string msg = peer_endpoint_is_unreachable;
         m_strand.post(boost::bind(&TcpSocket::onError, this, -1, msg));
-        doStopWork(boost::system::error_code(boost::asio::error::network_unreachable));
+        doReconnectStop();
+        doWorkStop(boost::system::error_code(boost::asio::error::network_unreachable));
         return;
     }
     boost::system::error_code err;
@@ -238,12 +256,12 @@ void TcpSocket::doReconnect(const boost::system::error_code& ec)
     {
         m_strand.post(boost::bind(&TcpSocket::onError, this, err.value(), err.message()));
         m_timer.expires_from_now(std::chrono::milliseconds(5000));
-        m_timer.async_wait(boost::bind(&TcpSocket::doReconnect, this, boost::asio::placeholders::error));
+        m_timer.async_wait(boost::bind(&TcpSocket::doReconnectImpl, this, boost::asio::placeholders::error));
     }
     else
     {
+        doReconnectStop();
         doConnected();
-        m_isConnecting.exchange(false);
         startRecvAsync();
     }
 }
@@ -303,11 +321,14 @@ void TcpSocket::doSendAsyncHandler(const boost::system::error_code& ec, std::siz
 {
     if (ec)
     {
-        doStopWork(ec);
+        m_sendBuf.reset();
         m_strand.post(boost::bind(&TcpSocket::onError, this, ec.value(), ec.message()));
-        return;
+        doReconnectStart(ec);
     }
-    doSendAsync(bytes_transferred);
+    else
+    {
+        doSendAsync(bytes_transferred);
+    }
 }
 
 int TcpSocket::startRecvAsync()
@@ -324,23 +345,25 @@ int TcpSocket::startRecvAsync()
         m_strand.post(boost::bind(&TcpSocket::onError, this, -1, msg));
         return -1;
     }
-    bool needRecv = true;
-    if (true)
-    {
-        std::lock_guard<std::mutex> lg(m_recvBuf.m_mutex);
-        needRecv = m_recvBuf.m_isRecving ? false : true;
-        m_recvBuf.m_isRecving = true;
-    }
-    if (!needRecv)
+
+    std::lock_guard<std::mutex> lg(m_recvBuf.m_mutex);
+    if (m_recvBuf.m_isRecving)
     {
         std::string msg = TcpSocket_is_already_receiving;
         m_strand.post(boost::bind(&TcpSocket::onError, this, -1, msg));
         return -1;
     }
-    doRecvAsync(0);
-    return 0;
+    else
+    {
+        m_recvBuf.m_isRecving = true;
+        doRecvAsync(0);
+        return 0;
+    }
 }
-
+/************************************************************************/
+/* 当接收逻辑出错时,要第一时间清空自己的buffer,因为接收逻辑无锁设计,         */
+/* 否则的话,其它代码要清空接收buffer时,在逻辑上是有几率出错的.               */
+/************************************************************************/
 void TcpSocket::doRecvAsync(std::size_t lastLengthReceived)
 {
     char* bufRecv = nullptr;
@@ -348,7 +371,8 @@ void TcpSocket::doRecvAsync(std::size_t lastLengthReceived)
 
     if (true)
     {
-        std::lock_guard<std::mutex> lg(m_recvBuf.m_mutex);
+        //不需要加锁.另外,因为是互斥锁,加锁的话,注意不要死锁.
+        //std::lock_guard<std::mutex> lg(m_recvBuf.m_mutex);
         m_recvBuf.m_posEnd += lastLengthReceived;
         if ((m_recvBuf.m_buf.size() - m_recvBuf.m_posEnd < m_recvBuf.m_sortSize) &&
             (0 < m_recvBuf.m_posBeg))
@@ -360,7 +384,7 @@ void TcpSocket::doRecvAsync(std::size_t lastLengthReceived)
         bufRecv = &m_recvBuf.m_buf[m_recvBuf.m_posEnd];
         bufSize = m_recvBuf.m_buf.size() - m_recvBuf.m_posEnd;
     }
-    
+
     if (bufSize)
     {
         //如果此时socket被关闭了,那么回调函数肯定会带出来错误消息,所以我可以让asio代我检查socket的状态,我没必要写逻辑检查它.
@@ -368,20 +392,28 @@ void TcpSocket::doRecvAsync(std::size_t lastLengthReceived)
     }
     else
     {
-        doStopWork(boost::system::error_code(boost::asio::error::message_size));
+        boost::system::error_code ec(boost::asio::error::message_size);
+        m_recvBuf.reset();
+        m_strand.post(boost::bind(&TcpSocket::onError, this, ec.value(), ec.message()));
+        doReconnectStart(ec);
     }
 }
-
+/************************************************************************/
+/* 当接收逻辑出错时,要第一时间清空自己的buffer,因为接收逻辑无锁设计,         */
+/* 否则的话,其它代码要清空接收buffer时,在逻辑上是有几率出错的.               */
+/************************************************************************/
 void TcpSocket::doRecvAsyncHandler(const boost::system::error_code& ec, std::size_t bytes_transferred)
 {
     if (ec)
     {
-        doStopWork(ec);
+        m_recvBuf.reset();
         m_strand.post(boost::bind(&TcpSocket::onError, this, ec.value(), ec.message()));
-        return;
+        doReconnectStart(ec);
     }
-
-    doRecvAsync(bytes_transferred);
+    else
+    {
+        doRecvAsync(bytes_transferred);
+    }
 }
 #endif//TcpSocket
 
