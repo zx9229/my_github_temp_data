@@ -24,6 +24,9 @@
     <ClInclude Include="test.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="my_net.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">

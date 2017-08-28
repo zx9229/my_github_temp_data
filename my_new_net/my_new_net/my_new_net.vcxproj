@@ -154,6 +154,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="my_net.h" />
     <ClInclude Include="test.hpp" />
     <ClInclude Include="xx.hpp" />
     <ClInclude Include="xx_impl.hpp" />
