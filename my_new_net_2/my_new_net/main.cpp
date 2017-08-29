@@ -10,14 +10,10 @@ int main()
 
 void test1()
 {
-    boost::asio::io_service io;
-    boost::asio::io_service::work wk(io);
-    boost::thread_group thgp;
-    for (int i = 0; i < 4; ++i)
-    {
-        thgp.create_thread(boost::bind(&boost::asio::io_service::run, boost::ref(io)));
-    }
-    TcpSocketNewPtr tcpSock = TcpSocketNewPtr(new TcpSocketNew(io));
+    IoWithMThPtr mThIo = IoWithMThPtr(new IoWithMTh);
+    mThIo->initialize(4);
+    
+    TcpSocketPtr tcpSock = TcpSocketPtr(new TcpSocket(mThIo->ioService()));
 
     for (std::string cmd; (std::cout << "press:" << std::endl) && getline(std::cin, cmd); )
     {
@@ -28,7 +24,8 @@ void test1()
             std::string remoteIp;
             std::cin >> remoteIp;
             std::cin >> remotePort;
-            tcpSock->connect(remoteIp.c_str(), remotePort);
+            int rv = tcpSock->connect(remoteIp.c_str(), remotePort);
+            std::cout << "connect: rv=" << rv << std::endl;
         }
         else if (cmd == "close")
         {
@@ -36,7 +33,8 @@ void test1()
         }
         else
         {
-            //tcpSock.send(cmd.c_str(), cmd.size());
+            int rv = tcpSock->sendAsync(cmd.c_str(), cmd.size());
+            std::cout << "sendAsync: rv=" << rv << std::endl;
         }
     }
     return;

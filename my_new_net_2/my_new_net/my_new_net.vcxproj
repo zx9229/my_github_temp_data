@@ -154,7 +154,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="test.hpp" />
     <ClInclude Include="xx.hpp" />
     <ClInclude Include="xx_impl.hpp" />
   </ItemGroup>

@@ -1,115 +1,177 @@
 #ifndef XX_HPP
 #define XX_HPP
 
+
 #include <cassert>
+#include <string>
 #include <set>
 #include <memory>
 #include <mutex>
-#include <boost/asio.hpp>
 #include <boost/bind.hpp>
+#include <boost/asio.hpp>
 #include <boost/asio/steady_timer.hpp>
 #include <boost/thread.hpp>
+
 
 //////////////////////////////////////////////////////////////////////////
 //临时写了一个类,发送和接收使用了同一个锁,导致发送时无法接收,接收时无法发送数据.
 //实际上应该:发送和接收应该同时进行.
 //////////////////////////////////////////////////////////////////////////
 
-class MThIo
+
+class IoWithMTh
 {
 public:
-    ~MThIo() { terminate(); }
+    IoWithMTh() :m_wk(m_io) {}
+    virtual ~IoWithMTh() { terminate(); }
+    boost::asio::io_service& ioService() { return m_io; }
     void initialize(int threadNum);
     void terminate();
-    boost::asio::io_service& ioService() { return m_io; }
 private:
     boost::asio::io_service m_io;
-    boost::thread_group     m_thgp;
+    boost::asio::io_service::work m_wk;
+    boost::thread_group m_thgp;
 };
-using MThIoPtr = std::shared_ptr<MThIo>;
+using IoWithMThPtr = std::shared_ptr<IoWithMTh>;
+
+
 //////////////////////////////////////////////////////////////////////////
 
-class TcpServerNew;
-using BoostSocketPtr = std::unique_ptr<boost::asio::ip::tcp::socket>;
-class TcpSocketNew;
-using TcpSocketNewPtr = std::shared_ptr<TcpSocketNew>;
-class TcpSocketNew :public std::enable_shared_from_this<TcpSocketNew>
+
+class TcpSocket;
+using TcpSocketPtr = std::shared_ptr<TcpSocket>;
+
+
+class TcpServer
 {
+private:
+    friend class TcpSocket;
+private:
+    typedef std::unique_ptr<boost::asio::ip::tcp::acceptor>  BoostAcceptorPtr;
+    typedef std::unique_ptr<boost::asio::io_service::strand> BoostStrandPtr;
+
 public:
-    TcpSocketNew(boost::asio::io_service& io);
-    ///@brief  这个构造函数是专为TcpServer设计的,它设计得有问题,用户可以自行构造一个socket传进去.
-    TcpSocketNew(BoostSocketPtr& sock, TcpServerNew* server);
+    TcpServer(boost::asio::io_service& io);
+    TcpServer(int threadNum);
+
 public:
-    bool isOpen() const { return m_sock->is_open(); }
+    void open(const std::string& ip, std::uint16_t port, int&eValue, std::string& eMessage);
+    int  open(const std::string& ip, std::uint16_t port);
+    void close(int&eValue, std::string& eMessage);
+    int  close();
+    //
+    virtual void onConnected(TcpSocketPtr tcpSock)/* {}*/;
+    virtual void onDisconnected(TcpSocketPtr tcpSock, const boost::system::error_code& ec)/* {}*/;
+    virtual void onReceivedData(TcpSocketPtr tcpSock, const char* data, std::uint32_t size)/* {}*/;
+    virtual void onError(TcpSocketPtr tcpSock, const boost::system::error_code& ec)/* {}*/;
+    virtual void onError(TcpSocketPtr tcpSock, int value, const std::string& message)/* {}*/;
+
+private:
+    void doAcceptAsync();
+    void doAcceptAsyncHandler(const boost::system::error_code& ec, boost::asio::ip::tcp::socket* rawSock);
+
+private:
+    std::recursive_mutex m_mtx;
+    bool m_isWorking;
+    IoWithMThPtr m_mThIo;
+    BoostAcceptorPtr m_acceptor;
+    boost::asio::ip::tcp::endpoint m_localEndpoint;
+    BoostStrandPtr   m_strand;
+    std::set<TcpSocketPtr> m_set;
+};
+
+
+//////////////////////////////////////////////////////////////////////////
+
+
+using BoostSocketPtr = std::unique_ptr<boost::asio::ip::tcp::socket>;
+
+
+class TcpSocket :public std::enable_shared_from_this<TcpSocket>
+{
+private:
+    class SendBuffer
+    {
+    public:
+        SendBuffer() :m_capacity(1024 * 512), m_isSending(false) { reset(); }
+        void reset();
+    public:
+        std::size_t const m_capacity;
+        std::string m_bufWait;
+        std::string m_bufWork;
+        std::size_t m_posWork;//当前的位置,再往前的数据都被发送过了,都是过时的数据了.
+        bool        m_isSending;
+    };
+    //
+    class RecvBuffer
+    {
+    public:
+        RecvBuffer() :m_BUFSIZE(1024 * 8) { m_bufWork.resize(m_BUFSIZE); }
+    public:
+        std::string m_bufWork;
+        std::size_t m_BUFSIZE;
+    };
+
+public:
+    TcpSocket(boost::asio::io_service& io);
+    TcpSocket(BoostSocketPtr& sock, TcpServer* server);//TODO:
+
+public:
+    bool isAccepted() const { return (nullptr != m_server); }
     bool isWorking() const { return m_isWorking; }
     bool isConnected() const { return m_isConnected; }
-    bool isAccepted() const { return (nullptr != m_server); }
+    bool isOpen() const { return m_sock->is_open(); }
+    const boost::asio::ip::tcp::endpoint& bindEndpoint() { return m_server ? m_server->m_localEndpoint : m_defaultEndpoint; }
+    const boost::asio::ip::tcp::endpoint& connectEndpoint() { return m_peerEndpoint; }
+    const boost::asio::ip::tcp::endpoint& localEndpoint() { return m_localEndpoint; }
+    const boost::asio::ip::tcp::endpoint& remoteEndpoint() { return m_remoteEndpoint; }
+    const boost::asio::ip::tcp::endpoint& localEndpointEx() { return m_server ? bindEndpoint() : localEndpoint(); }
+    const boost::asio::ip::tcp::endpoint& remoteEndpointEx() { return m_server ? remoteEndpoint() : connectEndpoint(); }
     //
-    int connect(const std::string& ip, std::uint16_t port, bool asyncConnect = true);
+    void connect(const std::string& ip, std::uint16_t port, bool asyncConnect, int& eValue, std::string& eMessage);
+    int  connect(const std::string& ip, std::uint16_t port, bool asyncConnect = true);
     void close();
+    void sendAsync(const char* data, std::uint32_t size, int&eValue, std::string& eMeseage);
+    int  sendAsync(const char* data, std::uint32_t size);
+    int  sendSynch(const char* data, std::uint32_t size, int&eValue, std::string& eMeseage);
     //
-    virtual void onConnected(TcpSocketNewPtr tcpSock) {}
-    virtual void onDisconnected(TcpSocketNewPtr tcpSock, const boost::system::error_code& ec) {}
-    virtual void onReceivedData(TcpSocketNewPtr tcpSock, const char* data, std::uint32_t size) {}
-    virtual void onError(TcpSocketNewPtr tcpSock, int value, const std::string& message) {}
-    virtual void onError(TcpSocketNewPtr tcpSock, const boost::system::error_code& ec) {}
-    
+    virtual void onConnected(TcpSocketPtr tcpSock)/* {}*/;
+    virtual void onDisconnected(TcpSocketPtr tcpSock, const boost::system::error_code& ec)/* {}*/;
+    virtual void onReceivedData(TcpSocketPtr tcpSock, const char* data, std::uint32_t size)/* {}*/;
+    virtual void onError(TcpSocketPtr tcpSock, int value, const std::string& message)/* {}*/;
+    virtual void onError(TcpSocketPtr tcpSock, const boost::system::error_code& ec)/* {}*/;
+
 private:
     void doJustCloseBoostSocket();
     void doConnectAsync(const boost::system::error_code& ec);
     void doConnectAsyncHandler(const boost::system::error_code& ec);
     void doRecvAsync();
     void doRecvAsyncHandler(const boost::system::error_code& ec, std::size_t bytes_transferred);
+    void doSendAsync(std::size_t lastLengthSent);
+    void doSendAsyncHandler(const boost::system::error_code& ec, std::size_t bytes_transferred);
     //
-    void doOnConnected(TcpSocketNewPtr tcpSock);
-    void doOnDisconnected(TcpSocketNewPtr tcpSock, const boost::system::error_code& ec);
-    void doOnReceivedData(TcpSocketNewPtr tcpSock, const char* data, std::uint32_t size);
-    void doOnError(TcpSocketNewPtr tcpSock, int value, const std::string& message);
-    void doOnError(TcpSocketNewPtr tcpSock, const boost::system::error_code& ec);
+    void doOnConnected(TcpSocketPtr tcpSock);
+    void doOnDisconnected(TcpSocketPtr tcpSock, const boost::system::error_code& ec);
+    void doOnReceivedData(TcpSocketPtr tcpSock, const char* data, std::uint32_t size);
+    void doOnError(TcpSocketPtr tcpSock, const boost::system::error_code& ec);
+    void doOnError(TcpSocketPtr tcpSock, int value, const std::string& message);
 private:
-    std::recursive_mutex m_mtx;
-    TcpServerNew* const m_server;
-    bool m_isWorking;
-    bool m_isConnected;
-    boost::asio::steady_timer m_timer;
+    std::recursive_mutex            m_mtx;
+    boost::asio::ip::tcp::endpoint  m_peerEndpoint;
+    TcpServer* const                m_server;
+    bool                            m_isWorking;
+    bool                            m_isConnected;
+    boost::asio::steady_timer       m_timer;
     boost::asio::io_service::strand m_strand;
-    const int m_RECVSIZE;
-    std::string m_recvBuf;
-    BoostSocketPtr m_sock;
-    boost::asio::ip::tcp::endpoint m_connectToEp;
+    BoostSocketPtr                  m_sock;
+    SendBuffer                      m_sendBuf;
+    RecvBuffer                      m_recvBuf;
+
+    boost::asio::ip::tcp::endpoint m_localEndpoint;
+    boost::asio::ip::tcp::endpoint m_remoteEndpoint;
+    boost::asio::ip::tcp::endpoint m_defaultEndpoint;
 };
 
-//////////////////////////////////////////////////////////////////////////
-
-class TcpServerNew
-{
-    friend class TcpSocketNew;
-private:
-    typedef std::unique_ptr<boost::asio::ip::tcp::acceptor>  BoostAcceptorPtr;
-    typedef std::unique_ptr<boost::asio::io_service::strand> BoostStrandPtr;
-public:
-    TcpServerNew(boost::asio::io_service& io);
-    TcpServerNew(int threadNum);
-public:
-    int start(const std::string& ip, std::uint16_t port);
-    void close();
-    //
-    virtual void onConnected(TcpSocketNewPtr tcpSock) {}
-    virtual void onDisconnected(TcpSocketNewPtr tcpSock, const boost::system::error_code& ec) {}
-    virtual void onReceivedData(TcpSocketNewPtr tcpSock, const char* data, std::int32_t size) {}
-    virtual void onError(TcpSocketNewPtr tcpSock, int value, const std::string& message) {}
-    virtual void onError(TcpSocketNewPtr tcpSock, const boost::system::error_code& ec) {}
-private:
-    void doAcceptAsync();
-    void acceptHandler(const boost::system::error_code& ec, boost::asio::ip::tcp::socket* rawSock);
-private:
-    std::recursive_mutex m_mtx;
-    bool m_isWorking;
-    MThIoPtr m_mThIo;
-    BoostAcceptorPtr m_acceptor;
-    BoostStrandPtr   m_strand;
-    std::set<TcpSocketNewPtr> m_set;
-};
 
 #include "xx_impl.hpp"
 #endif//XX_HPP
