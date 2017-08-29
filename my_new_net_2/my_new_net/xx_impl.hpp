@@ -207,7 +207,8 @@ void TcpSocketNew::doRecvAsyncHandler(const boost::system::error_code& ec, std::
 
 void TcpSocketNew::doRecvAsync()
 {
-    m_sock->async_receive(boost::asio::buffer(m_recvBuf), boost::bind(&TcpSocketNew::doRecvAsyncHandler, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
+    //TODO:
+    m_sock->async_receive(boost::asio::buffer((char*)m_recvBuf.c_str(), m_recvBuf.size()), boost::bind(&TcpSocketNew::doRecvAsyncHandler, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
 }
 
 void TcpSocketNew::doOnConnected(TcpSocketNewPtr tcpSock)
@@ -233,14 +234,14 @@ void TcpSocketNew::doOnDisconnected(TcpSocketNewPtr tcpSock, const boost::system
 void TcpSocketNew::doOnReceivedData(TcpSocketNewPtr tcpSock, const char* data, std::uint32_t size)
 {
     if (m_server)
-        ;//m_server->;
+        m_server->onReceivedData(tcpSock, data, size);
     onReceivedData(tcpSock, data, size);
 }
 
 void TcpSocketNew::doOnError(TcpSocketNewPtr tcpSock, int value, const std::string& message)
 {
     if (m_server)
-        ;//m_server->;
+        m_server->onError(tcpSock, value, message);
     onError(tcpSock, value, message);
 }
 
@@ -311,6 +312,8 @@ int TcpServerNew::start(const std::string& ip, std::uint16_t port)
     m_isWorking = true;
 
     doAcceptAsync();
+
+    return 0;
 }
 
 void TcpServerNew::close()
@@ -339,12 +342,15 @@ void TcpServerNew::close()
 
 void TcpServerNew::doAcceptAsync()
 {
-    BoostSocketPtr sock = BoostSocketPtr(new boost::asio::ip::tcp::socket(m_acceptor->get_io_service()));
-    m_acceptor->async_accept(*sock, boost::bind(&TcpServerNew::acceptHandler, this, boost::asio::placeholders::error, std::move(sock)));
+    boost::asio::ip::tcp::socket* rawSock = new boost::asio::ip::tcp::socket(m_acceptor->get_io_service());
+    m_acceptor->async_accept(*rawSock, boost::bind(&TcpServerNew::acceptHandler, this, boost::asio::placeholders::error, rawSock));
 }
 
-void TcpServerNew::acceptHandler(const boost::system::error_code& ec, BoostSocketPtr& sock)
+void TcpServerNew::acceptHandler(const boost::system::error_code& ec, boost::asio::ip::tcp::socket* rawSock)
 {
+    assert(rawSock != nullptr);
+    BoostSocketPtr sock = BoostSocketPtr(rawSock);
+
     if (ec.value() != 0)
     {
         std::lock_guard<std::recursive_mutex> lg(m_mtx);
