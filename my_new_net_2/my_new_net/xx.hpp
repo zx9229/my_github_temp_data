@@ -120,7 +120,7 @@ public:
     bool isAccepted() const { return (nullptr != m_server); }
     bool isWorking() const { return m_isWorking; }
     bool isConnected() const { return m_isConnected; }
-    bool isOpen() const { return m_sock->is_open(); }
+    bool isOpen() const { return m_socket->is_open(); }
     const boost::asio::ip::tcp::endpoint& bindEndpoint() { return m_server ? m_server->m_localEndpoint : m_defaultEndpoint; }
     const boost::asio::ip::tcp::endpoint& connectEndpoint() { return m_peerEndpoint; }
     const boost::asio::ip::tcp::endpoint& localEndpoint() { return m_localEndpoint; }
@@ -163,7 +163,7 @@ private:
     bool                            m_isConnected;
     boost::asio::steady_timer       m_timer;
     boost::asio::io_service::strand m_strand;
-    BoostSocketPtr                  m_sock;
+    BoostSocketPtr                  m_socket;
     SendBuffer                      m_sendBuf;
     RecvBuffer                      m_recvBuf;
 

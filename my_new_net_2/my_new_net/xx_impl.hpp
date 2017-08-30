@@ -61,7 +61,7 @@ TcpSocket::TcpSocket(boost::asio::io_service& io)
     :m_server(nullptr), m_isWorking(false), m_isConnected(false),
     m_timer(io), m_strand(io)
 {
-    m_sock = BoostSocketPtr(new boost::asio::ip::tcp::socket(io));
+    m_socket = BoostSocketPtr(new boost::asio::ip::tcp::socket(io));
 }
 
 ///@brief  Õâ¸ö¹¹Ôìº¯ÊýÊÇ×¨ÎªTcpServerÉè¼ÆµÄ,ËüÉè¼ÆµÃÓÐÎÊÌâ,ÓÃ»§¿ÉÒÔ×ÔÐÐ¹¹ÔìÒ»¸ösocket´«½øÈ¥.
@@ -71,9 +71,9 @@ TcpSocket::TcpSocket(BoostSocketPtr& sock, TcpServer* server)
 {
     assert(nullptr != m_server);
 
-    m_sock = std::move(sock);
-    m_localEndpoint = m_sock->local_endpoint();
-    m_remoteEndpoint = m_sock->remote_endpoint();
+    m_socket = std::move(sock);
+    m_localEndpoint = m_socket->local_endpoint();
+    m_remoteEndpoint = m_socket->remote_endpoint();
 
     m_strand.post(boost::bind(&TcpSocket::doOnConnected, this, shared_from_this()));
     doRecvAsync();
@@ -117,7 +117,7 @@ void TcpSocket::connect(const std::string& ip, std::uint16_t port, bool asyncCon
     }
     else
     {
-        m_sock->connect(m_peerEndpoint, ec);
+        m_socket->connect(m_peerEndpoint, ec);
 
         if (ec.value() != 0)
         {
@@ -131,8 +131,8 @@ void TcpSocket::connect(const std::string& ip, std::uint16_t port, bool asyncCon
             assert(false == m_isConnected);
             m_isConnected = true;
 
-            m_localEndpoint = m_sock->local_endpoint();
-            m_remoteEndpoint = m_sock->remote_endpoint();
+            m_localEndpoint = m_socket->local_endpoint();
+            m_remoteEndpoint = m_socket->remote_endpoint();
 
             m_strand.post(boost::bind(&TcpSocket::doOnConnected, this, shared_from_this()));
 
@@ -242,7 +242,7 @@ int TcpSocket::sendSynch(const char* data, std::uint32_t size, int&eValue, std::
     }
 
     boost::system::error_code ec;
-    bytes_transferred = m_sock->send(boost::asio::buffer(data, size), 0, ec);
+    bytes_transferred = m_socket->send(boost::asio::buffer(data, size), 0, ec);
 
     eValue = ec.value();
     eMeseage = ec.value() ? ec.message() : "";
@@ -253,8 +253,8 @@ int TcpSocket::sendSynch(const char* data, std::uint32_t size, int&eValue, std::
 void TcpSocket::doJustCloseBoostSocket()
 {
     boost::system::error_code ec;
-    m_sock->shutdown(boost::asio::socket_base::shutdown_both, ec);
-    m_sock->close(ec);
+    m_socket->shutdown(boost::asio::socket_base::shutdown_both, ec);
+    m_socket->close(ec);
 }
 
 void TcpSocket::doConnectAsync(const boost::system::error_code& ec)//×¼±¸·¢ÆðÒì²½Á¬½Ó.
@@ -275,7 +275,7 @@ void TcpSocket::doConnectAsync(const boost::system::error_code& ec)//×¼±¸·¢ÆðÒì²
 
     assert(m_isConnected == false);
 
-    m_sock->async_connect(m_peerEndpoint, boost::bind(&TcpSocket::doConnectAsyncHandler, this, boost::asio::placeholders::error));
+    m_socket->async_connect(m_peerEndpoint, boost::bind(&TcpSocket::doConnectAsyncHandler, this, boost::asio::placeholders::error));
 }
 
 void TcpSocket::doConnectAsyncHandler(const boost::system::error_code& ec)
@@ -289,8 +289,8 @@ void TcpSocket::doConnectAsyncHandler(const boost::system::error_code& ec)
         assert(m_isWorking == true);
         m_isConnected = true;
 
-        m_localEndpoint = m_sock->local_endpoint();
-        m_remoteEndpoint = m_sock->remote_endpoint();
+        m_localEndpoint = m_socket->local_endpoint();
+        m_remoteEndpoint = m_socket->remote_endpoint();
     }
 
     if (m_isConnected)
@@ -314,7 +314,7 @@ void TcpSocket::doConnectAsyncHandler(const boost::system::error_code& ec)
 
 void TcpSocket::doRecvAsync()
 {
-    m_sock->async_receive(
+    m_socket->async_receive(
         boost::asio::buffer(const_cast<char*>(m_recvBuf.m_bufWork.c_str()), m_recvBuf.m_bufWork.size()),
         boost::bind(&TcpSocket::doRecvAsyncHandler, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred)
     );//TODO:
@@ -380,7 +380,7 @@ void TcpSocket::doSendAsync(std::size_t lastLengthSent)
     }
 
     //ÎÒÃ»±ØÒªÐ´´úÂëÅÐ¶ÏsocketµÄ×´Ì¬,ÈÃasio´úÎÒ¼ì²é¼´¿É.
-    m_sock->async_send(boost::asio::buffer(bufData, bufSize), /*ÓÃstd::bind»á³ö´í*/boost::bind(&TcpSocket::doSendAsyncHandler, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
+    m_socket->async_send(boost::asio::buffer(bufData, bufSize), /*ÓÃstd::bind»á³ö´í*/boost::bind(&TcpSocket::doSendAsyncHandler, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
 }
 
 void TcpSocket::doSendAsyncHandler(const boost::system::error_code& ec, std::size_t bytes_transferred)
@@ -564,6 +564,12 @@ void TcpServer::close(int&eValue, std::string& eMessage)
         }
 
         m_localEndpoint = boost::asio::ip::tcp::endpoint();
+
+        for (TcpSocketPtr sock : m_set)
+        {
+            sock->close();
+        }
+        m_set.clear();
     }
 }
 
