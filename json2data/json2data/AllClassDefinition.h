@@ -40,12 +40,12 @@ struct TestStruct
     char m_c;
     char m_buf[64];
     bool m_b;
-    short m_short;
-    unsigned short m_ushort;
-    int m_int;
-    unsigned int m_uint;
-    //long m_long;
-    //unsigned long m_ulong;
+    short m_s;
+    unsigned short m_us;
+    int m_i;
+    unsigned int m_ui;
+    long m_l;//在windows下,long和int都是std::int32_t,在Linux下long是std::int64_t,
+    unsigned long m_ul;
     long long m_ll;
     unsigned long long m_ull;
     float m_f;
@@ -55,16 +55,16 @@ struct TestStruct
 #if 1
 namespace RJC
 {
-    void toData(rapidjson::Value& jValue, LoginData& data, int size)
+    void toData(rapidjson::Value& jValue, LoginData& dataOut, int size)
     {
-        data = {};
+        dataOut = {};
         rapidjson::Value::MemberIterator it;
         if (jValue.MemberEnd() != (it = jValue.FindMember("m_username")))
-            toData(it->value, data.m_username, sizeof(data.m_username));
+            toData(it->value, dataOut.m_username, sizeof(dataOut.m_username));
         if (jValue.MemberEnd() != (it = jValue.FindMember("m_password")))
-            toData(it->value, data.m_password, sizeof(data.m_password));
+            toData(it->value, dataOut.m_password, sizeof(dataOut.m_password));
         if (jValue.MemberEnd() != (it = jValue.FindMember("m_reservedData")))
-            toData(it->value, data.m_reservedData, sizeof(data.m_reservedData));
+            toData(it->value, dataOut.m_reservedData, sizeof(dataOut.m_reservedData));
     };
     void fromData(rapidjson::Value& jvOut, rapidjson::Document::AllocatorType& allocator, const LoginData& data)
     {
@@ -78,14 +78,14 @@ namespace RJC
         fromData(jValue, allocator, data.m_reservedData);
         jvOut.AddMember("m_reservedData", jValue, allocator);
     };
-    void toData(rapidjson::Value& jValue, PushMessage& data, int size)
+    void toData(rapidjson::Value& jValue, PushMessage& dataOut, int size)
     {
-        data = {};
+        dataOut = {};
         rapidjson::Value::MemberIterator it;
         if (jValue.MemberEnd() != (it = jValue.FindMember("m_username")))
-            toData(it->value, data.m_username, sizeof(data.m_username));
+            toData(it->value, dataOut.m_username, sizeof(dataOut.m_username));
         if (jValue.MemberEnd() != (it = jValue.FindMember("m_message")))
-            toData(it->value, data.m_message, sizeof(data.m_message));
+            toData(it->value, dataOut.m_message, sizeof(dataOut.m_message));
     };
     void fromData(rapidjson::Value& jvOut, rapidjson::Document::AllocatorType& allocator, const PushMessage& data)
     {
@@ -97,12 +97,12 @@ namespace RJC
         fromData(jValue, allocator, data.m_message);
         jvOut.AddMember("m_message", jValue, allocator);
     };
-    void toData(rapidjson::Value& jValue, TestCls& data, int size)
+    void toData(rapidjson::Value& jValue, TestCls& dataOut, int size)
     {
-        data = {};
+        dataOut = {};
         rapidjson::Value::MemberIterator it;
         if (jValue.MemberEnd() != (it = jValue.FindMember("m_str")))
-            toData(it->value, data.m_str, sizeof(data.m_str));
+            toData(it->value, dataOut.m_str, sizeof(dataOut.m_str));
     };
     void fromData(rapidjson::Value& jvOut, rapidjson::Document::AllocatorType& allocator, const TestCls& data)
     {
@@ -112,30 +112,34 @@ namespace RJC
         fromData(jValue, allocator, data.m_str);
         jvOut.AddMember("m_str", jValue, allocator);
     };
-    void toData(rapidjson::Value& jValue, TestStruct& data, int size)
+    void toData(rapidjson::Value& jValue, TestStruct& dataOut, int size)
     {
-        data = {};
+        dataOut = {};
         rapidjson::Value::MemberIterator it;
         if (jValue.MemberEnd() != (it = jValue.FindMember("m_c")))
-            toData(it->value, data.m_c, sizeof(data.m_c));
+            toData(it->value, dataOut.m_c, sizeof(dataOut.m_c));
         if (jValue.MemberEnd() != (it = jValue.FindMember("m_b")))
-            toData(it->value, data.m_b, sizeof(data.m_b));
-        if (jValue.MemberEnd() != (it = jValue.FindMember("m_short")))
-            toData(it->value, data.m_short, sizeof(data.m_short));
-        if (jValue.MemberEnd() != (it = jValue.FindMember("m_ushort")))
-            toData(it->value, data.m_ushort, sizeof(data.m_ushort));
-        if (jValue.MemberEnd() != (it = jValue.FindMember("m_int")))
-            toData(it->value, data.m_int, sizeof(data.m_int));
-        if (jValue.MemberEnd() != (it = jValue.FindMember("m_uint")))
-            toData(it->value, data.m_uint, sizeof(data.m_uint));
+            toData(it->value, dataOut.m_b, sizeof(dataOut.m_b));
+        if (jValue.MemberEnd() != (it = jValue.FindMember("m_s")))
+            toData(it->value, dataOut.m_s, sizeof(dataOut.m_s));
+        if (jValue.MemberEnd() != (it = jValue.FindMember("m_us")))
+            toData(it->value, dataOut.m_us, sizeof(dataOut.m_us));
+        if (jValue.MemberEnd() != (it = jValue.FindMember("m_i")))
+            toData(it->value, dataOut.m_i, sizeof(dataOut.m_i));
+        if (jValue.MemberEnd() != (it = jValue.FindMember("m_ui")))
+            toData(it->value, dataOut.m_ui, sizeof(dataOut.m_ui));
+        if (jValue.MemberEnd() != (it = jValue.FindMember("m_l")))
+            toData(it->value, dataOut.m_l, sizeof(dataOut.m_l));
+        if (jValue.MemberEnd() != (it = jValue.FindMember("m_ul")))
+            toData(it->value, dataOut.m_ul, sizeof(dataOut.m_ul));
         if (jValue.MemberEnd() != (it = jValue.FindMember("m_ll")))
-            toData(it->value, data.m_ll, sizeof(data.m_ll));
+            toData(it->value, dataOut.m_ll, sizeof(dataOut.m_ll));
         if (jValue.MemberEnd() != (it = jValue.FindMember("m_ull")))
-            toData(it->value, data.m_ull, sizeof(data.m_ull));
+            toData(it->value, dataOut.m_ull, sizeof(dataOut.m_ull));
         if (jValue.MemberEnd() != (it = jValue.FindMember("m_f")))
-            toData(it->value, data.m_f, sizeof(data.m_f));
+            toData(it->value, dataOut.m_f, sizeof(dataOut.m_f));
         if (jValue.MemberEnd() != (it = jValue.FindMember("m_d")))
-            toData(it->value, data.m_d, sizeof(data.m_d));
+            toData(it->value, dataOut.m_d, sizeof(dataOut.m_d));
     };
     void fromData(rapidjson::Value& jvOut, rapidjson::Document::AllocatorType& allocator, const TestStruct& data)
     {
@@ -146,14 +150,18 @@ namespace RJC
         jvOut.AddMember("m_c", jValue, allocator);
         fromData(jValue, allocator, data.m_b);
         jvOut.AddMember("m_b", jValue, allocator);
-        fromData(jValue, allocator, data.m_short);
-        jvOut.AddMember("m_short", jValue, allocator);
-        fromData(jValue, allocator, data.m_ushort);
-        jvOut.AddMember("m_ushort", jValue, allocator);
-        fromData(jValue, allocator, data.m_int);
-        jvOut.AddMember("m_int", jValue, allocator);
-        fromData(jValue, allocator, data.m_uint);
-        jvOut.AddMember("m_uint", jValue, allocator);
+        fromData(jValue, allocator, data.m_s);
+        jvOut.AddMember("m_s", jValue, allocator);
+        fromData(jValue, allocator, data.m_us);
+        jvOut.AddMember("m_us", jValue, allocator);
+        fromData(jValue, allocator, data.m_i);
+        jvOut.AddMember("m_i", jValue, allocator);
+        fromData(jValue, allocator, data.m_ui);
+        jvOut.AddMember("m_ui", jValue, allocator);
+        fromData(jValue, allocator, data.m_l);
+        jvOut.AddMember("m_l", jValue, allocator);
+        fromData(jValue, allocator, data.m_ul);
+        jvOut.AddMember("m_ul", jValue, allocator);
         fromData(jValue, allocator, data.m_ll);
         jvOut.AddMember("m_ll", jValue, allocator);
         fromData(jValue, allocator, data.m_ull);

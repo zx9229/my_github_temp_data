@@ -61,16 +61,16 @@ class Gen(object):
         cData = oneStructData[2]
         #
         to__DataContent = ""
-        to__DataContent += "void toData(rapidjson::Value& jValue, {clsName}& data, int size)".format(clsName=cName) + Gen.LINE_DELIMITER()
+        to__DataContent += "void toData(rapidjson::Value& jValue, {clsName}& dataOut, int size)".format(clsName=cName) + Gen.LINE_DELIMITER()
         to__DataContent += "{" + Gen.LINE_DELIMITER()
-        to__DataContent += "    data = {};" + Gen.LINE_DELIMITER()
+        to__DataContent += "    dataOut = {};" + Gen.LINE_DELIMITER()
         to__DataContent += "    rapidjson::Value::MemberIterator it;" + Gen.LINE_DELIMITER()
         #
         allFieldData = Gen.calcFieldData(cData)
         for fieldData in allFieldData:
             fName = fieldData[1]
             to__DataContent += '    if (jValue.MemberEnd() != (it = jValue.FindMember("{fieldName}")))'.format(fieldName=fName) + Gen.LINE_DELIMITER()
-            to__DataContent += '        toData(it->value, data.{fieldName}, sizeof(data.{fieldName}));'.format(fieldName=fName) + Gen.LINE_DELIMITER()
+            to__DataContent += '        toData(it->value, dataOut.{fieldName}, sizeof(dataOut.{fieldName}));'.format(fieldName=fName) + Gen.LINE_DELIMITER()
         to__DataContent += "};" + Gen.LINE_DELIMITER()
         #
         return to__DataContent
