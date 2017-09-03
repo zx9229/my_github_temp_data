@@ -113,16 +113,11 @@ class Gen(object):
 
 if __name__ == "__main__":
     if True:
-        if len(sys.argv) <= 1:
-            print("命令: srcFilename           dstFilename   encoding")
-            print("例如: AllClassDefinition.h  _json2data.h  utf-8")
-            exit(0)
-        else:
-            srcFilename = "AllClassDefinition.h" if len(sys.argv) <= 1 else sys.argv[1]
-            dstFilename = "_json2data.h" if len(sys.argv) <= 2 else sys.argv[2]
-            encoding = "utf-8" if len(sys.argv) <= 3 else sys.argv[3]
-            Gen.test(srcFilename, dstFilename, encoding)
-            exit(0)
+        srcFilename = "AllClassDefinition.h" if len(sys.argv) <= 1 else sys.argv[1]
+        dstFilename = "_json2data.h" if len(sys.argv) <= 2 else sys.argv[2]
+        encoding = "utf-8" if len(sys.argv) <= 3 else sys.argv[3]
+        Gen.test(srcFilename, dstFilename, encoding)
+        exit(0)
     else:
         if len(sys.argv) <= 2:
             print("命令: srcFilename           dstFilename   encoding")
