@@ -19,6 +19,20 @@
 */
 namespace RJC  // RapidJsonConvert
 {
+    void toData(rapidjson::Value& jValue, bool& data, int size)
+    {
+        if (jValue.IsBool())
+            data = jValue.GetBool();
+        else
+            data = {};
+    }
+    void toData(rapidjson::Value& jValue, char& data, int size)
+    {
+        if (jValue.IsString())
+            data = jValue.GetString()[0];
+        else
+            data = {};
+    }
     void toData(rapidjson::Value& jValue, char* data, int size)
     {
         if (jValue.IsString())
@@ -134,6 +148,14 @@ namespace RJC  // RapidJsonConvert
         }
     }
     //////////////////////////////////////////////////////////////////////////
+    void fromData(rapidjson::Value& jvOut, rapidjson::Document::AllocatorType& allocator, bool data)
+    {
+        jvOut.SetBool(data);
+    }
+    void fromData(rapidjson::Value& jvOut, rapidjson::Document::AllocatorType& allocator, char data)
+    {
+        jvOut.SetString(&data, 1, allocator);
+    }
     void fromData(rapidjson::Value& jvOut, rapidjson::Document::AllocatorType& allocator, std::int32_t data)
     {
         jvOut.SetInt(data);

@@ -37,9 +37,9 @@ public:
 
 struct TestStruct
 {
-    //char m_c;
+    char m_c;
     char m_buf[64];
-    //bool m_b;
+    bool m_b;
     short m_short;
     unsigned short m_ushort;
     int m_int;
@@ -116,6 +116,10 @@ namespace RJC
     {
         data = {};
         rapidjson::Value::MemberIterator it;
+        if (jValue.MemberEnd() != (it = jValue.FindMember("m_c")))
+            toData(it->value, data.m_c, sizeof(data.m_c));
+        if (jValue.MemberEnd() != (it = jValue.FindMember("m_b")))
+            toData(it->value, data.m_b, sizeof(data.m_b));
         if (jValue.MemberEnd() != (it = jValue.FindMember("m_short")))
             toData(it->value, data.m_short, sizeof(data.m_short));
         if (jValue.MemberEnd() != (it = jValue.FindMember("m_ushort")))
@@ -138,6 +142,10 @@ namespace RJC
         jvOut.SetObject();
         jvOut.RemoveAllMembers();
         rapidjson::Value jValue;
+        fromData(jValue, allocator, data.m_c);
+        jvOut.AddMember("m_c", jValue, allocator);
+        fromData(jValue, allocator, data.m_b);
+        jvOut.AddMember("m_b", jValue, allocator);
         fromData(jValue, allocator, data.m_short);
         jvOut.AddMember("m_short", jValue, allocator);
         fromData(jValue, allocator, data.m_ushort);
@@ -155,7 +163,6 @@ namespace RJC
         fromData(jValue, allocator, data.m_d);
         jvOut.AddMember("m_d", jValue, allocator);
     };
-
 };
 #endif
 //////////////////////////////////////////////////////////////////////////
