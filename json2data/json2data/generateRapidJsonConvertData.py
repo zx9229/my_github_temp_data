@@ -50,7 +50,7 @@ class Gen(object):
 
     @staticmethod
     def calcFieldData(content):
-        patternStr = r"[ \t\r\n]*(?P<fieldType>[a-zA-Z0-9_:]+)[ \t\r\n]+(?P<fieldName>[a-zA-Z0-9_]+)[ \t\r\n]*;"
+        patternStr = r"[ \t\r\n]*(?P<fieldType>[a-zA-Z0-9_:]+)[ \t\r\n]+(?P<fieldName>[a-zA-Z0-9_]+)(\[\d*\]){0,1}[ \t\r\n]*;"
         pattern = re.compile(patternStr, re.DOTALL)
         retList = re.findall(pattern, content)
         return retList

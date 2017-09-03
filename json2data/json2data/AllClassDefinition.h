@@ -118,6 +118,8 @@ namespace RJC
         rapidjson::Value::MemberIterator it;
         if (jValue.MemberEnd() != (it = jValue.FindMember("m_c")))
             toData(it->value, dataOut.m_c, sizeof(dataOut.m_c));
+        if (jValue.MemberEnd() != (it = jValue.FindMember("m_buf")))
+            toData(it->value, dataOut.m_buf, sizeof(dataOut.m_buf));
         if (jValue.MemberEnd() != (it = jValue.FindMember("m_b")))
             toData(it->value, dataOut.m_b, sizeof(dataOut.m_b));
         if (jValue.MemberEnd() != (it = jValue.FindMember("m_s")))
@@ -148,6 +150,8 @@ namespace RJC
         rapidjson::Value jValue;
         fromData(jValue, allocator, data.m_c);
         jvOut.AddMember("m_c", jValue, allocator);
+        fromData(jValue, allocator, data.m_buf);
+        jvOut.AddMember("m_buf", jValue, allocator);
         fromData(jValue, allocator, data.m_b);
         jvOut.AddMember("m_b", jValue, allocator);
         fromData(jValue, allocator, data.m_s);
