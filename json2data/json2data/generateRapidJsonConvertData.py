@@ -1,6 +1,9 @@
+# coding=utf-8
+# -*- coding: utf-8 -*-
 # // 本文件应以 UTF-8 无 BOM 格式编码.
 import codecs
 import re
+import sys
 
 
 class Gen(object):
@@ -66,10 +69,8 @@ class Gen(object):
         allFieldData = Gen.calcFieldData(cData)
         for fieldData in allFieldData:
             fName = fieldData[1]
-            to__DataContent += '    if (jValue.MemberEnd() != (it = jValue.FindMember("{fieldName}")))'.format(
-                fieldName=fName) + Gen.LINE_DELIMITER()
-            to__DataContent += '        toData(it->value, data.{fieldName}, sizeof(data.{fieldName}));'.format(
-                fieldName=fName) + Gen.LINE_DELIMITER()
+            to__DataContent += '    if (jValue.MemberEnd() != (it = jValue.FindMember("{fieldName}")))'.format(fieldName=fName) + Gen.LINE_DELIMITER()
+            to__DataContent += '        toData(it->value, data.{fieldName}, sizeof(data.{fieldName}));'.format(fieldName=fName) + Gen.LINE_DELIMITER()
         to__DataContent += "};" + Gen.LINE_DELIMITER()
         #
         return to__DataContent
@@ -80,22 +81,17 @@ class Gen(object):
         cData = oneStructData[2]
         #
         fromDataContent = ""
-        fromDataContent += "void fromData(rapidjson::Value& jvOut, rapidjson::Document::AllocatorType& allocator, const {clsName}& data)".format(
-            clsName=cName) + Gen.LINE_DELIMITER()
+        fromDataContent += "void fromData(rapidjson::Value& jvOut, rapidjson::Document::AllocatorType& allocator, const {clsName}& data)".format(clsName=cName) + Gen.LINE_DELIMITER()
         fromDataContent += "{" + Gen.LINE_DELIMITER()
         fromDataContent += "    jvOut.SetObject();" + Gen.LINE_DELIMITER()
-        fromDataContent += "    jvOut.RemoveAllMembers();" + Gen.LINE_DELIMITER(
-        )
-        fromDataContent += "    rapidjson::Value jValue;" + Gen.LINE_DELIMITER(
-        )
+        fromDataContent += "    jvOut.RemoveAllMembers();" + Gen.LINE_DELIMITER()
+        fromDataContent += "    rapidjson::Value jValue;" + Gen.LINE_DELIMITER()
         #
         allFieldData = Gen.calcFieldData(cData)
         for fieldData in allFieldData:
             fName = fieldData[1]
-            fromDataContent += "    fromData(jValue, allocator, data.{fieldName});".format(
-                fieldName=fName) + Gen.LINE_DELIMITER()
-            fromDataContent += '    jvOut.AddMember("{fieldName}", jValue, allocator);'.format(
-                fieldName=fName) + Gen.LINE_DELIMITER()
+            fromDataContent += "    fromData(jValue, allocator, data.{fieldName});".format(fieldName=fName) + Gen.LINE_DELIMITER()
+            fromDataContent += '    jvOut.AddMember("{fieldName}", jValue, allocator);'.format(fieldName=fName) + Gen.LINE_DELIMITER()
         fromDataContent += "};" + Gen.LINE_DELIMITER()
         #
         return fromDataContent
@@ -116,8 +112,27 @@ class Gen(object):
 
 
 if __name__ == "__main__":
-    encoding = "gbk"
-    srcFilename = "./AllClassDefinition.h"
-    dstFilename = "./_json2data.h"
-    Gen.test(srcFilename, dstFilename, encoding)
+    if True:
+        if len(sys.argv) <= 1:
+            print("命令: srcFilename           dstFilename   encoding")
+            print("例如: AllClassDefinition.h  _json2data.h  utf-8")
+            exit(0)
+        else:
+            srcFilename = "AllClassDefinition.h" if len(sys.argv) <= 1 else sys.argv[1]
+            dstFilename = "_json2data.h" if len(sys.argv) <= 2 else sys.argv[2]
+            encoding = "utf-8" if len(sys.argv) <= 3 else sys.argv[3]
+            Gen.test(srcFilename, dstFilename, encoding)
+            exit(0)
+    else:
+        if len(sys.argv) <= 2:
+            print("命令: srcFilename           dstFilename   encoding")
+            print("例如: AllClassDefinition.h  _json2data.h  utf-8")
+            exit(0)
+        else:
+            srcFilename = sys.argv[1]
+            dstFilename = sys.argv[2]
+            encoding = "utf-8" if len(sys.argv) <= 3 else sys.argv[3]
+            Gen.test(srcFilename, dstFilename, encoding)
+            exit(0)
+    assert False
     exit(0)
