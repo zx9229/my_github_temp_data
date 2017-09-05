@@ -314,5 +314,6 @@ namespace RJC  // RapidJsonConvert
     }
     //////////////////////////////////////////////////////////////////////////
     //rapidjson::CrtAllocator m_allocator;
+    //RapidJSON 还提供另一个分配器 CrtAllocator，当中 CRT 是 C 运行库（C RunTime library）的缩写。
 };
 #endif//RAPID_JSON_CONVERT_H
