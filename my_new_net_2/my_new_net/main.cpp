@@ -4,16 +4,17 @@
 void test1();
 int main()
 {
+    MyNet::TcpClient client(1, 1);
     test1();
     return 0;
 }
 
 void test1()
 {
-    IoWithMThPtr mThIo = IoWithMThPtr(new IoWithMTh);
+    MyNet::IoWithMThPtr mThIo = MyNet::IoWithMThPtr(new MyNet::IoWithMTh);
     mThIo->initialize(4);
     
-    TcpSocketPtr tcpSock = TcpSocketPtr(new TcpSocket(mThIo->ioService()));
+    MyNet::TcpSocketPtr tcpSock = MyNet::TcpSocketPtr(new MyNet::TcpSocket(mThIo->ioService()));
 
     for (std::string cmd; (std::cout << "press:" << std::endl) && getline(std::cin, cmd); )
     {

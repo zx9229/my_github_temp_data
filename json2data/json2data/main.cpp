@@ -1,11 +1,34 @@
 // 本文件应以 UTF-8 无 BOM 格式编码.
+#include <iostream>
 #include "RJC.h"
 #include "AllClassDefinition.h"
 
 TestStruct getOneTestStruct();
+bool isEqual(const composit_t& _l, const composit_t&_r);
 
 
 int main()
+{
+    one_t one = { 2 };
+    composit_t composit = { 1,{ "tom", "jack\r\nCRLF" }, 3,{ { 2,3 } },{ { 5,6 } }, 5.3,{ one } };
+    std::string jsonStr;
+    RJC::data2json(composit, jsonStr);
+
+    std::cout << jsonStr << std::endl;
+
+    composit_t comp;
+    RJC::json2data(jsonStr, comp);
+
+    if (isEqual(composit, comp))
+        printf("");
+    else
+        printf("");
+
+    return 0;
+}
+
+
+int test_1()
 {
     TestStruct ts = getOneTestStruct();
     std::string jsonData;
@@ -39,4 +62,31 @@ TestStruct getOneTestStruct()
     ts.m_us = 10086;
 
     return ts;
+}
+
+bool isEqual(const composit_t& _l, const composit_t&_r)
+{
+    bool bIsEqual = false;
+    do
+    {
+        if (_l.a != _r.a)
+            break;
+        if (_l.b != _r.b)
+            break;
+        if (_l.c != _r.c)
+            break;
+        if (_l.d != _r.d)
+            break;
+        if (_l.e != _r.e)
+            break;
+        if (_l.f != _r.f)
+            break;
+        if (_l.g != _r.g)
+            break;
+        //
+        bIsEqual = true;
+        //
+    } while (false);
+    //
+    return bIsEqual;
 }
